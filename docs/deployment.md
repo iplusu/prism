@@ -62,7 +62,11 @@ cd frontend && npm run build && cd ..
 ./scripts/serve.sh      # web :8000 + worker + collab :1234, logs in var/log/
 ```
 
-For a permanent install use the systemd user units: `loginctl enable-linger $USER`, then `scripts/install-systemd.sh` (units `prism-db` (optional), `prism-collab`, `prism-web`, `prism-worker`, `prism-backup.timer`; each runs `scripts/prism-service.sh <role>`). `PRISM_HOST=tailscale` binds the web process to the node's Tailscale address only. The web process proxies `/collab/*` to the collab service, so only one port is needed. Put nginx/Caddy with TLS in front using `deploy/nginx.conf` as the template (replace the upstreams with `127.0.0.1:8000` and `127.0.0.1:1234`).
+For a permanent install use the systemd user units: `loginctl enable-linger $USER`, then `scripts/install-systemd.sh` (units `prism-db` (optional), `prism-collab`, `prism-web`, `prism-worker`, `prism-backup.timer`; each runs `scripts/prism-service.sh <role>`). The web process proxies `/collab/*` to the collab service, so only one port is needed. Ways to expose that port:
+
+* **Tailscale, HTTPS without a port (used by the current deployment)**: enable MagicDNS and HTTPS certificates for the tailnet, run `sudo tailscale set --operator=$USER` once, set `PRISM_HOST=127.0.0.1` and `PRISM_COOKIE_SECURE=true` in `.env`, restart `prism-web prism-collab prism-worker`, then `tailscale serve --bg --https 443 http://127.0.0.1:8000`. The serve config persists across reboots (`tailscale serve status`; remove with `tailscale serve --https=443 off`). Address: `https://<machine>.<tailnet>.ts.net/`, reachable from the tailnet only. Secure cookies mean plain-HTTP addresses cannot log in, so do not expose an HTTP port as well.
+* **Tailscale, plain HTTP (no sudo)**: `PRISM_HOST=tailscale` binds the web process to the node's Tailscale IPv4 address only; address `http://<machine>.<tailnet>.ts.net:8000`, `PRISM_COOKIE_SECURE=false`. Unprivileged users cannot bind ports below 1024, so the port stays in the URL.
+* **nginx/Caddy with TLS**: use `deploy/nginx.conf` as the template (replace the upstreams with `127.0.0.1:8000` and `127.0.0.1:1234`) and set `PRISM_COOKIE_SECURE=true`.
 
 ## PostgreSQL
 
@@ -72,6 +76,6 @@ For a permanent install use the systemd user units: `loginctl enable-linger $USE
 
 * **Health**: `GET /api/health`, collab `GET :1234/health`, `python -m app.cli doctor`.
 * **Workers**: several workers can run against PostgreSQL. Jobs whose worker stops heart-beating for 2 minutes are marked failed (not silently re-run) and the task shows the error.
-* **Backups**: `scripts/backup.sh` (pg_dump custom format or SQLite online backup, `data.tar.gz` without task work copies, `collab.tar.gz`, `SHA256SUMS`). Restore with `scripts/restore.sh <dir>` while services are stopped; it keeps the previous data as `*.before-restore-<ts>`. `tool-homes/` contains tool credentials — protect backups accordingly.
+* **Backups**: `scripts/backup.sh` (pg_dump custom format or SQLite online backup, `data.tar.gz` without task work copies, `collab.tar.gz`, `SHA256SUMS`). Restore with `scripts/restore.sh <dir>` while services are stopped; it keeps the previous data as `*.before-restore-<ts>`. `tool-homes/` contains tool credentials — protect backups accordingly. Verified: the pg_dump backup on the production PostgreSQL instance (checksums OK, `pg_restore --list` reads the dump) and SQLite backup → restore; the `pg_restore` branch of `restore.sh` has not been run yet.
 * **Upgrades**: rebuild images / `git pull && make install && make build`, then `make migrate`, restart.
 * **Limits** (env): `AGENT_RUN_TIMEOUT_SECONDS=600`, `AGENT_TASK_TIMEOUT_SECONDS=1500`, `AGENT_MAX_ATTEMPTS=2`, `COMPILE_*`, `PRISM_MAX_*`. Projects can lower (not raise) agent limits in *Settings → Project*.
