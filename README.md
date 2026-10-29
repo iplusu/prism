@@ -70,10 +70,19 @@ Browser: **http://<server>:8000**. The collaboration WebSocket is proxied over t
 
 ### Access over Tailscale (tailnet only)
 
-With `PRISM_HOST=tailscale` in `.env`, `serve.sh` and the systemd services bind only to this node's Tailscale IPv4 address. Nothing listens on public or LAN interfaces. The web process proxies the collaboration WebSocket at `/collab` on the same port (leave `COLLAB_PUBLIC_URL` empty), so a single port is enough.
+The web process proxies the collaboration WebSocket at `/collab` on the same port (leave `COLLAB_PUBLIC_URL` empty), so a single port is enough. Nothing is exposed on public or LAN interfaces in either setup below.
 
-- Address: `http://<machine>.<tailnet>.ts.net:8000`
-- For HTTPS, enable HTTPS certificates for the tailnet, run `sudo tailscale set --operator=$USER` once, then use `tailscale serve --bg 8000` (in that case set `PRISM_HOST=127.0.0.1` and `PRISM_COOKIE_SECURE=true`).
+**HTTPS without a port (recommended; used by the current deployment)**: Prism listens only on localhost and Tailscale terminates TLS with a tailnet certificate.
+
+1. In the Tailscale admin console, enable MagicDNS and HTTPS certificates (DNS page).
+2. Let your user manage Tailscale serve, once (needs sudo): `sudo tailscale set --operator=$USER`
+3. In `.env`: `PRISM_HOST=127.0.0.1`, `PRISM_COOKIE_SECURE=true`; restart `prism-web prism-collab prism-worker`.
+4. `tailscale serve --bg --https 443 http://127.0.0.1:8000` (persists across reboots; check with `tailscale serve status`, remove with `tailscale serve --https=443 off`).
+
+- Address: `https://<machine>.<tailnet>.ts.net/`
+- With secure cookies, plain-HTTP addresses cannot log in, so do not also expose an HTTP port.
+
+**Plain HTTP on a port (no sudo)**: with `PRISM_HOST=tailscale`, `serve.sh` and the systemd services bind only to this node's Tailscale IPv4 address. Address: `http://<machine>.<tailnet>.ts.net:8000` (keep `PRISM_COOKIE_SECURE=false`). Ports below 1024 such as 80 need root, so the port stays in the URL.
 
 ### Always-on systemd services (no root needed)
 

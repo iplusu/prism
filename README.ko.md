@@ -70,10 +70,19 @@ cd frontend && npm ci && npm run build && cd ..
 
 ### Tailscale로 접속 (tailnet 전용)
 
-`.env`에 `PRISM_HOST=tailscale`을 넣으면 `serve.sh`/systemd 서비스가 이 노드의 Tailscale IPv4에만 바인딩합니다. 공개·LAN 인터페이스에는 열리지 않습니다. 공동 편집 WebSocket은 web 프로세스가 같은 포트의 `/collab`으로 프록시하므로(`COLLAB_PUBLIC_URL`은 비워 둠), 포트 하나만 있으면 됩니다.
+공동 편집 WebSocket은 web 프로세스가 같은 포트의 `/collab`으로 프록시하므로(`COLLAB_PUBLIC_URL`은 비워 둠), 포트 하나만 있으면 됩니다. 아래 두 방식 모두 공개·LAN 인터페이스에는 열리지 않습니다.
 
-- 접속: `http://<machine>.<tailnet>.ts.net:8000`
-- HTTPS가 필요하면 tailnet에서 HTTPS 인증서를 켜고 `sudo tailscale set --operator=$USER` 한 번 실행한 뒤 `tailscale serve --bg 8000`을 쓰면 됩니다(이 경우 `PRISM_HOST=127.0.0.1`, `PRISM_COOKIE_SECURE=true`).
+**포트 없는 HTTPS (권장, 현재 배포 방식)**: Prism은 localhost에서만 받고, Tailscale이 tailnet 인증서로 TLS를 처리합니다.
+
+1. Tailscale 관리 콘솔(DNS 메뉴)에서 MagicDNS와 HTTPS Certificates를 켭니다.
+2. 현재 사용자가 Tailscale serve를 관리할 수 있게 한 번 설정합니다(sudo 필요): `sudo tailscale set --operator=$USER`
+3. `.env`: `PRISM_HOST=127.0.0.1`, `PRISM_COOKIE_SECURE=true` 후 `prism-web prism-collab prism-worker` 재시작.
+4. `tailscale serve --bg --https 443 http://127.0.0.1:8000` (재부팅 후에도 유지, 확인 `tailscale serve status`, 해제 `tailscale serve --https=443 off`).
+
+- 접속: `https://<machine>.<tailnet>.ts.net/`
+- Secure 쿠키를 쓰므로 HTTP 주소로는 로그인할 수 없습니다. HTTP 포트를 함께 열지 마십시오.
+
+**포트를 쓰는 HTTP (sudo 불필요)**: `PRISM_HOST=tailscale`이면 `serve.sh`/systemd 서비스가 이 노드의 Tailscale IPv4에만 바인딩합니다. 접속: `http://<machine>.<tailnet>.ts.net:8000` (`PRISM_COOKIE_SECURE=false` 유지). 80 같은 1024 미만 포트는 root가 필요해 주소에 포트가 남습니다.
 
 ### systemd 서비스로 상시 실행 (root 불필요)
 
