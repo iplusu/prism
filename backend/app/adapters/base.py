@@ -20,7 +20,7 @@ import threading
 import time
 import uuid
 from collections.abc import Iterator
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from ..config import get_settings
@@ -39,6 +39,7 @@ class RunSpec:
     prompt: str
     timeout_seconds: int
     session_id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    isolated: bool = False  # set by start(): the run is inside Prism's bwrap sandbox
 
 
 @dataclass
@@ -181,6 +182,7 @@ class Adapter:
         elif not want_sandbox and not s.allow_unsandboxed_tools:
             raise AdapterError("TOOL_SANDBOX=none requires ALLOW_UNSANDBOXED_TOOLS=true")
         ro = binary_binds(exe) + self.extra_ro_binds() + [b for b in s.tool_extra_ro_binds.split(":") if b]
+        spec = replace(spec, isolated=want_sandbox)
         sb = SandboxSpec(
             argv=self.build_argv(exe, spec), workdir=spec.workdir, env=env, ro_binds=ro,
             rw_binds=[str(home), str(spec.run_dir), *self._extra_rw()], etc_files=ETC_FOR_NETWORK + ["/etc/passwd", "/etc/group"],

@@ -173,8 +173,8 @@ Implemented and verified (evidence in [docs/verification.md](docs/verification.m
 
 Remaining work / not verified:
 
-- **Orchestrator LLM**: connected to the a5000 server (vLLM, Qwen3.8-27B-FP8, served id `qwen38-a5000`). All 7 connection-test steps pass and a real Auto question was answered correctly from the project. Not yet run with the real model: an edit proposal written by the LLM, and delegation to an external tool (the tools are not authenticated).
-- **Tool authentication**: for Codex and Claude Code, installation, flags, sandboxed execution and detection of the unauthenticated state were checked with the real CLIs; running real authenticated tasks needs service credentials. The Antigravity CLI is not present on this host, so its adapter follows the official documentation and has not been run.
+- **Orchestrator LLM**: connected to the a5000 server (vLLM, Qwen3.8-27B-FP8, served id `qwen38-a5000`). All 7 connection-test steps pass and a real Auto question was answered correctly from the project. The real model also planned and delegated edit tasks to each external tool (below). Not yet run with the real model: an edit proposal written by the LLM itself, and Auto mode choosing among the tools.
+- **External tools**: Codex 0.165.0, Claude Code 2.1.312 and Antigravity (agy) 1.4.10 are installed and signed in in the service tool homes. A real edit task with each tool, inside the bwrap sandbox, produced a verified proposal (candidate build and checks passed). Antigravity needs a CPU with PCLMUL (a generic QEMU CPU model is not enough).
 - **Docker Compose**: no Docker on this host, so image builds and startup were not verified.
 - Backup script: the `pg_dump` backup path was run on the production PostgreSQL instance; the `pg_restore` path of `restore.sh` has not been run. The SQLite backup/restore path was verified.
 - The memory cap for tool processes relies on the container (`mem_limit`) (Node-based CLIs are incompatible with `RLIMIT_AS`).

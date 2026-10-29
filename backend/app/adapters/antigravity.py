@@ -1,20 +1,25 @@
 """Google Antigravity CLI adapter: `agy -p` (headless mode).
 
-Based on the official docs (antigravity.google/docs/cli/headless and
-/reference), not on an installed binary — `agy` is not installed on the
-development host. The flags below are checked against the installed `agy
---help` at health-check time; a missing flag marks the adapter
+Checked against agy 1.4.10. The flags below are checked against the
+installed `agy --help` at health-check time; a missing flag marks the adapter
 `incompatible` instead of guessing.
 
-The prompt is sent on stdin with `--input-format stream-json`
+`--print` takes the prompt as its value, so it is passed as `--print=` (empty)
+and the prompt is sent on stdin with `--input-format stream-json`
 ({"event":"user","message":{"content":...}}); closing stdin ends the session.
-stream-json output events: init, step_update (state, step_type, tool_name,
-text_delta), result (status SUCCESS|ERROR|CANCELED|..., response, error).
+stream-json output events carry their payload under a key named after the
+event: {"event":"init","init":{cwd, permission_mode}}, {"event":"step_update",
+"step_update":{state, step_type, tool_name, text_delta}}, {"event":"result",
+"result":{status SUCCESS|ERROR|CANCELED|..., response, error}}.
+
+Sign-in state: there is no `agy auth status`; an interactive login writes
+~/.gemini/antigravity-cli/antigravity-oauth-token, so its presence is used.
 """
 
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 from ..config import get_settings
 from .base import Adapter, RunHandle, RunResult, RunSpec, jline
@@ -43,12 +48,14 @@ class AntigravityAdapter(Adapter):
     def check_auth(self, exe: str) -> tuple[str, str]:
         if get_settings().gemini_api_key_for_tool:
             return "ok", "API key configured (AGY_GEMINI_API_KEY)"
-        return "unknown", ("no documented non-interactive auth check; sign in once interactively with "
-                           f"HOME={self.home()} agy, or set AGY_GEMINI_API_KEY. Auth failures are detected at run time.")
+        token = Path(self.home()) / ".gemini" / "antigravity-cli" / "antigravity-oauth-token"
+        if token.is_file() and token.stat().st_size > 0:
+            return "ok", f"signed in (OAuth token in HOME={self.home()})"
+        return "missing", f"not signed in; run `HOME={self.home()} agy` once interactively, or set AGY_GEMINI_API_KEY"
 
     def build_argv(self, exe: str, spec: RunSpec) -> list[str]:
         s = get_settings()
-        argv = [exe, "--print", "--input-format", "stream-json", "--output-format", "stream-json",
+        argv = [exe, "--print=", "--input-format", "stream-json", "--output-format", "stream-json",
                 "--print-timeout", f"{spec.timeout_seconds}s", "--mode", "accept-edits", "--sandbox"]
         if s.agy_model:
             argv += ["--model", s.agy_model]
@@ -62,6 +69,8 @@ class AntigravityAdapter(Adapter):
         if ev is None:
             return []
         t = ev.get("type") or ev.get("event")
+        if isinstance(ev.get(t), dict):
+            ev = ev[t]
         if t == "init":
             return [{"type": "init", "text": f"cwd={ev.get('cwd', '')} permission_mode={ev.get('permission_mode', '')}", "data": {}}]
         if t == "step_update":

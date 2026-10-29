@@ -12,9 +12,9 @@ Everything below was actually executed on the development host (Ubuntu 26.04, no
 | Sandbox | bubblewrap (system), unprivileged user namespaces available |
 | Databases | SQLite (default test DB); **PostgreSQL 17.10** (embedded binaries, real server) |
 | Browser | Firefox (system, headless) via puppeteer-core 24.43.1 |
-| Codex CLI | codex-cli 0.165.0 (real, installed with npm, not logged in) |
-| Claude Code | 2.1.312 (real, installed) — run with an isolated, empty config dir |
-| Antigravity | not installed |
+| Codex CLI | codex-cli 0.165.0 (real, installed with npm; later signed in with ChatGPT in the service tool home) |
+| Claude Code | 2.1.312 (real, installed) — tests use an isolated, empty config dir; the deployment is signed in (claude.ai) in the service tool home |
+| Antigravity | agy 1.4.10 (real, official installer; signed in via OAuth in the service tool home). Needs a CPU with PCLMUL: on the first VM CPU model it crashed with SIGILL |
 | Orchestrator LLM | **real**: vLLM on the a5000 server (4× RTX A5000, Qwen3.8-27B-FP8, served id `qwen38-a5000`, `max_model_len` 262144, Qwen3 reasoning parser), reached over the tailnet through the server's existing passthrough; no server settings changed |
 
 ## Commands and results
@@ -29,6 +29,7 @@ Everything below was actually executed on the development host (Ubuntu 26.04, no
 | Browser E2E | `e2e/verify.mjs` against `scripts/serve.sh` (PostgreSQL, collab on, DEMO_MODE on) | **14/14 steps passed**; screenshots in `docs/screenshots/` |
 | Backup → destroy → restore | `scripts/backup.sh`, delete project + DB, `scripts/restore.sh` (SQLite) | project text and labelled versions restored (found and fixed a WAL-file bug in restore) |
 | Orchestrator LLM, real | `python -m app.cli llm-test` against the a5000 server | **7/7 steps passed**: reachability, model id served, chat, streaming, tool calling, `json_object` + `json_schema`, 50 ms timeout → `timeout`. Planning mode chosen: tools |
+| Authenticated tool runs, real | on the deployed service: the same edit request ("add one sentence to the end of sections/conclusion.tex") with mode `codex`, `claude`, `antigravity`; LLM plans via tool calling, each tool runs in bwrap | **Claude Code**: proposal ready, candidate build ok, checks `preserve_labels`/`preserve_citations`/`only_write_scope` passed (238 s). **Antigravity**: same result (383 s). **Codex**: first run made no change — its own sandbox could not start inside ours (`bwrap: No permissions to create a new namespace`), reported honestly with no proposal; after the fix below: one-sentence diff, proposal ready (126 s). Proposals were not applied; the temporary project was deleted |
 | Auto task, real LLM | temporary sample project on the deployed service, `mode=auto`, question about title and sections | completed in 15 s, planned via tool calling, answered directly (no external tool) with the correct title and the 4 sections; project deleted afterwards |
 | Backup, PostgreSQL | `scripts/backup.sh` on the production PostgreSQL 17.11 instance (pg_dump 17.11) | custom-format `db.dump` written; `sha256sum -c SHA256SUMS` OK for all 3 files; `pg_restore --list` reads it (13 table-data entries). Restore not run |
 
@@ -77,12 +78,13 @@ Screenshots: `docs/screenshots/01-login.png` … `11-narrow-dark.png`.
 * Collab: WebSocket messages arriving while a document was loading were dropped (clients never synced). Fixed (queue until ready).
 * LLM timeout probe could pass/fail depending on server speed. Now a long generation under a 50 ms budget; a server that answers faster is reported as "not exercised".
 * LLM connection test against the real reasoning model: chat and streaming probes had a 16-token budget that the model's hidden reasoning used up, so they reported an empty reply. Probes now allow 512 tokens and report `finish_reason`/usage when the reply is empty.
+* Codex inside the bwrap sandbox: `--sandbox workspace-write` makes Codex start its own bubblewrap, which cannot create a nested namespace, so every command and file write failed. Inside Prism's sandbox Codex now runs with `danger-full-access` and the outer sandbox is the boundary; `workspace-write` is kept when there is no outer sandbox.
+* Antigravity: showed `available` before sign-in (unknown auth was mapped to available); `--print` needs a value; event payloads are nested under the event name. Adapter fixed against agy 1.4.10; sign-in is detected from the OAuth token file.
 * SQLite timestamps lacked a timezone; restore left stale WAL files; conflicts on binary/added/deleted files were not resolvable. Fixed.
 
 ## Not verified here
 
 * **Real orchestrator LLM, beyond Q&A**: connection and a direct answer were verified with the real model (above); an LLM-written edit proposal and delegation to an external tool have not been run with it yet (the latter also needs authenticated tools). The automated suite still uses the fake server.
-* **Authenticated tool runs** (an actual edit made by Codex / Claude Code / Antigravity): need service credentials (`tool-homes/` login or API keys).
-* **Antigravity CLI** at all (not installed); adapter follows the official docs and checks flags at runtime.
+* **Auto mode choosing an external tool** with the real LLM and authenticated tools, and the second-attempt fallback with real tools (both verified only with the fake CLI).
 * **Docker Compose** build/start (no Docker on this host).
 * `pg_restore` branch of `scripts/restore.sh` (never run against a database; the SQLite restore branch was verified).

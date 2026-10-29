@@ -6,6 +6,13 @@ events), -s/--sandbox, -C/--cd, --skip-git-repo-check, --ephemeral,
 Events: thread.started, turn.started, item.started/updated/completed
 (agent_message, command_execution, file_change, reasoning, ...),
 turn.completed, turn.failed, error.
+
+Inside Prism's bwrap sandbox, Codex's own sandbox cannot start (it would need a
+nested user namespace: "bwrap: No permissions to create a new namespace"), so
+every shell command and file write fails. There the run uses
+`--sandbox danger-full-access` and relies on the outer sandbox (only the work
+copy, run dir and CODEX_HOME are writable; host home and other projects are not
+visible). Without the outer sandbox, Codex's own `workspace-write` is kept.
 """
 
 from __future__ import annotations
@@ -59,7 +66,7 @@ class CodexAdapter(Adapter):
     def build_argv(self, exe: str, spec: RunSpec) -> list[str]:
         s = get_settings()
         argv = [exe, "exec", "--json", "--skip-git-repo-check", "--ephemeral", "--ignore-rules",
-                "--sandbox", "workspace-write", "--cd", str(spec.workdir),
+                "--sandbox", "danger-full-access" if spec.isolated else "workspace-write", "--cd", str(spec.workdir),
                 "-c", 'approval_policy="never"', "-c", "project_doc_max_bytes=0",
                 "--output-last-message", str(spec.run_dir / "last_message.txt")]
         if s.codex_model:

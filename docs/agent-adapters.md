@@ -60,11 +60,12 @@ Verified against codex-cli 0.165.0 (`codex exec --help`).
 
 ```
 codex exec --json --skip-git-repo-check --ephemeral --ignore-rules
-           --sandbox workspace-write --cd <work>
+           --sandbox danger-full-access --cd <work>     # workspace-write when TOOL_SANDBOX=none
            -c approval_policy="never" -c project_doc_max_bytes=0
            --output-last-message <run>/last_message.txt [-m CODEX_MODEL] -
 ```
 
+* Sandbox mode: inside Prism's bwrap sandbox Codex's own sandbox cannot start (it needs a nested user namespace; every command and file write failed with "bwrap: No permissions to create a new namespace" in a real run), so Codex runs with `danger-full-access` and the outer sandbox is the boundary: only the work copy, the run directory and `CODEX_HOME` are writable, the host home and other projects are not mounted. Without the outer sandbox (`TOOL_SANDBOX=none`, which requires `ALLOW_UNSANDBOXED_TOOLS=true`) Codex keeps its own `workspace-write` sandbox.
 * Prompt on stdin (`-`). `project_doc_max_bytes=0` disables AGENTS.md loading; `--ignore-rules` skips exec-policy files.
 * Events (JSONL): `thread.started` (session id), `item.started/completed` with `agent_message`, `command_execution`, `file_change`, `error`, `turn.completed` (usage), `turn.failed`, `error`.
 * Success: exit 0, `turn.completed`, no `turn.failed`/`error`.
@@ -90,17 +91,18 @@ claude -p --output-format stream-json --verbose
 
 ### Antigravity — `agy -p`
 
-Based on the official docs (<https://antigravity.google/docs/cli/headless>, <https://antigravity.google/docs/cli/reference>); `agy` was **not installed** on the development host, so this adapter is not run-verified. Health checks the installed `--help` for every flag used and reports `incompatible` instead of guessing.
+Based on the official docs (<https://antigravity.google/docs/cli/headless>, <https://antigravity.google/docs/cli/reference>) and checked against an installed agy 1.4.10, including a real edit task run through Prism. Health checks the installed `--help` for every flag used and reports `incompatible` instead of guessing.
 
 ```
-agy --print --input-format stream-json --output-format stream-json
+agy --print= --input-format stream-json --output-format stream-json
     --print-timeout <N>s --mode accept-edits --sandbox [--model AGY_MODEL]
+# --print takes the prompt as its value; it is passed empty and the prompt goes on stdin
 stdin: {"event":"user","message":{"content":"<prompt>"}}\n   (closing stdin ends the session)
 ```
 
-* Events: `init`, `step_update` (`conversation_id`, `state`, `step_type`, `tool_name`, `text_delta`), `result` (`status`, `response`, `error`, `usage`).
+* Events: `init`, `step_update` (`conversation_id`, `state`, `step_type`, `tool_name`, `text_delta`), `result` (`status`, `response`, `error`, `usage`). Each event carries its payload under a key named after it, e.g. `{"event":"result","result":{...}}`.
 * Success: exit 0 and `result.status == "SUCCESS"`. File writes in the workspace are auto-allowed in headless mode; shell commands are soft-denied unless pre-approved.
-* Auth: no documented non-interactive status command → reported as `unknown` until a run; an `authentication required` error marks the run `needs_auth`. Credentials: interactive login once with `HOME=<tool home>`, or `AGY_GEMINI_API_KEY`.
+* Auth: there is no `agy auth status`; an interactive login writes `<tool home>/.gemini/antigravity-cli/antigravity-oauth-token`, so its presence (or `AGY_GEMINI_API_KEY`) means signed in, otherwise `needs_auth`. An `authentication required` error at run time also marks the run `needs_auth`. Credentials: interactive login once with `HOME=<tool home>`, or `AGY_GEMINI_API_KEY`.
 
 ### Demo executor (`DEMO_MODE=true` only)
 
