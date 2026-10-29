@@ -28,6 +28,7 @@ Everything below was actually executed on the development host (Ubuntu 26.04, no
 | Migration ↔ models | `alembic upgrade head && alembic check` on PostgreSQL 17 | "No new upgrade operations detected" |
 | Browser E2E | `e2e/verify.mjs` against `scripts/serve.sh` (PostgreSQL, collab on, DEMO_MODE on) | **14/14 steps passed**; screenshots in `docs/screenshots/` |
 | Backup → destroy → restore | `scripts/backup.sh`, delete project + DB, `scripts/restore.sh` (SQLite) | project text and labelled versions restored (found and fixed a WAL-file bug in restore) |
+| Backup, PostgreSQL | `scripts/backup.sh` on the production PostgreSQL 17.11 instance (pg_dump 17.11) | custom-format `db.dump` written; `sha256sum -c SHA256SUMS` OK for all 3 files; `pg_restore --list` reads it (13 table-data entries). Restore not run |
 
 ## What the backend tests cover (`backend/tests`)
 
@@ -81,4 +82,4 @@ Screenshots: `docs/screenshots/01-login.png` … `11-narrow-dark.png`.
 * **Authenticated tool runs** (an actual edit made by Codex / Claude Code / Antigravity): need service credentials (`tool-homes/` login or API keys).
 * **Antigravity CLI** at all (not installed); adapter follows the official docs and checks flags at runtime.
 * **Docker Compose** build/start (no Docker on this host).
-* `pg_dump`/`pg_restore` branch of the backup scripts (PostgreSQL client tools not present; the SQLite branch was verified).
+* `pg_restore` branch of `scripts/restore.sh` (never run against a database; the SQLite restore branch was verified).
