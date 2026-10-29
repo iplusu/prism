@@ -1,0 +1,16 @@
+\section{Introduction}
+\label{sec:intro}
+
+Sparse regression problems of the form
+\begin{equation}
+  \min_{x \in \mathbb{R}^n} \; \frac{1}{2}\lVert Ax - b \rVert_2^2 + \lambda \lVert x \rVert_1
+  \label{eq:lasso}
+\end{equation}
+are a standard tool in statistics and signal processing~\citep{tibshirani1996}.
+Proximal gradient methods solve \eqref{eq:lasso} efficiently when the step size
+is chosen well~\citep{beck2009}. A fixed step size $1/L$ requires the Lipschitz
+constant $L$ of the gradient, which is often unknown or pessimistic.
+
+Our contributions are an adaptive rule that estimates curvature from
+consecutive gradients (\cref{sec:method}) and an empirical comparison on three
+datasets (\cref{sec:results}).

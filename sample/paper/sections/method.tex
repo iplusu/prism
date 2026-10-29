@@ -1,0 +1,12 @@
+\section{Method}
+\label{sec:method}
+
+Let $g_k = A^\top(Ax_k - b)$. We set the step size to
+\begin{equation}
+  t_k = \frac{\lVert x_k - x_{k-1} \rVert_2^2}{\langle x_k - x_{k-1},\, g_k - g_{k-1} \rangle},
+  \label{eq:bb}
+\end{equation}
+a Barzilai--Borwein estimate~\citep{barzilai1988}, clipped to the interval
+$[10^{-4}, 10^{2}]$. The update is $x_{k+1} = \operatorname{prox}_{t_k \lambda \lVert\cdot\rVert_1}(x_k - t_k g_k)$.
+
+\input{figures/schematic}

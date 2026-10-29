@@ -1,0 +1,12 @@
+.env
+.env.*
+!.env.example
+var/
+**/node_modules/
+frontend/dist/
+backend/.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+sample/paper.zip
+docs/screenshots/*.tmp

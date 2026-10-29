@@ -1,0 +1,32 @@
+\documentclass[11pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage[margin=1in]{geometry}
+\usepackage[numbers]{natbib}
+\usepackage{hyperref}
+\usepackage{cleveref}
+
+\title{Adaptive Step-Size Control for Sparse Regression}
+\author{Research Group Example}
+\date{}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+We study an adaptive step-size rule for proximal gradient methods applied to
+sparse regression. The rule estimates local curvature from consecutive
+gradients and requires no line search. On three benchmark datasets it reduces
+the number of iterations by 31\% on average compared with a fixed step size.
+\end{abstract}
+
+\input{sections/introduction}
+\input{sections/method}
+\input{sections/results}
+\input{sections/conclusion}
+
+\bibliographystyle{plainnat}
+\bibliography{references}
+\end{document}

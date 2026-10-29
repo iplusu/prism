@@ -1,0 +1,7 @@
+{
+  "name": "prism-e2e",
+  "private": true,
+  "type": "module",
+  "description": "Browser verification of the main flows (headless Firefox). Usage: TMPDIR=$HOME/tmp node verify.mjs <screenshot-dir> <admin-password>",
+  "dependencies": { "puppeteer-core": "24.43.1" }
+}

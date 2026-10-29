@@ -1,0 +1,20 @@
+\section{Results}
+\label{sec:results}
+
+\Cref{tab:results} reports iterations to reach a relative objective gap of
+$10^{-6}$. The adaptive rule needs fewer iterations on all three datasets.
+
+\begin{table}[t]
+  \centering
+  \caption{Iterations to reach a relative gap of $10^{-6}$.}
+  \label{tab:results}
+  \begin{tabular}{lrrr}
+    \toprule
+    Dataset & Fixed & Adaptive & Reduction \\
+    \midrule
+    Leukemia  & 1840 & 1212 & 34\% \\
+    Housing   &  622 &  455 & 27\% \\
+    News20    & 4105 & 2797 & 32\% \\
+    \bottomrule
+  \end{tabular}
+\end{table}
