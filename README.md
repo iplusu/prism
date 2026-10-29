@@ -109,7 +109,7 @@ LLM_API_KEY=<if required>
 LLM_CONTEXT_CHARS=24000      # adjust to the context window of the model actually being served
 ```
 
-Port, model id, API format and context length are never guessed from the server name (`a5000` did not even resolve from this development host). For an API that is not OpenAI-compatible, implement `LLMProvider` in `backend/app/llm/provider.py` and register it in `PROVIDERS`.
+Port, model id, API format and context length are never guessed from the server name (for the deployment, the endpoint and model id were taken from the running server on a5000 and its `GET /v1/models` list). For an API that is not OpenAI-compatible, implement `LLMProvider` in `backend/app/llm/provider.py` and register it in `PROVIDERS`.
 
 **Settings → Orchestrator LLM → Test connection** (or `app.cli llm-test`) actually checks:
 
@@ -173,7 +173,7 @@ Implemented and verified (evidence in [docs/verification.md](docs/verification.m
 
 Remaining work / not verified:
 
-- **Real orchestrator LLM connection**: the real `LLM_BASE_URL` and `LLM_MODEL` for a5000 were not provided, so no real model was tested (the client and validation logic were tested against a fake OpenAI-compatible server).
+- **Orchestrator LLM**: connected to the a5000 server (vLLM, Qwen3.8-27B-FP8, served id `qwen38-a5000`). All 7 connection-test steps pass and a real Auto question was answered correctly from the project. Not yet run with the real model: an edit proposal written by the LLM, and delegation to an external tool (the tools are not authenticated).
 - **Tool authentication**: for Codex and Claude Code, installation, flags, sandboxed execution and detection of the unauthenticated state were checked with the real CLIs; running real authenticated tasks needs service credentials. The Antigravity CLI is not present on this host, so its adapter follows the official documentation and has not been run.
 - **Docker Compose**: no Docker on this host, so image builds and startup were not verified.
 - Backup script: the `pg_dump` backup path was run on the production PostgreSQL instance; the `pg_restore` path of `restore.sh` has not been run. The SQLite backup/restore path was verified.

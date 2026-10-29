@@ -109,7 +109,7 @@ LLM_API_KEY=<필요한 경우>
 LLM_CONTEXT_CHARS=24000      # 실제 서빙 중인 모델의 문맥 길이에 맞춰 조정
 ```
 
-서버 이름만으로 포트·모델 ID·API 형식·문맥 길이를 추측하지 않습니다(`a5000`은 이 개발 호스트에서 이름 해석도 되지 않았습니다). OpenAI 호환이 아닌 API라면 `backend/app/llm/provider.py`의 `LLMProvider`를 구현해 `PROVIDERS`에 등록합니다.
+서버 이름만으로 포트·모델 ID·API 형식·문맥 길이를 추측하지 않습니다(배포 시에는 a5000에서 실행 중인 서버와 그 `GET /v1/models` 목록에서 주소와 모델 ID를 확인했습니다). OpenAI 호환이 아닌 API라면 `backend/app/llm/provider.py`의 `LLMProvider`를 구현해 `PROVIDERS`에 등록합니다.
 
 **설정 → Orchestrator LLM → Test connection**(또는 `app.cli llm-test`)이 다음을 실제로 확인합니다.
 
@@ -173,7 +173,7 @@ DEMO 모드에서도 컴파일·검증·diff·적용·공동 편집은 실제로
 
 남은 작업 / 미검증:
 
-- **총괄 LLM 실제 연결**: a5000의 실제 `LLM_BASE_URL`·`LLM_MODEL`이 주어지지 않아 실제 모델로는 시험하지 못했습니다(테스트용 가짜 OpenAI 호환 서버로 클라이언트·검증 로직을 시험).
+- **총괄 LLM**: a5000 서버(vLLM, Qwen3.8-27B-FP8, 모델 ID `qwen38-a5000`)에 연결했습니다. 연결 시험 7단계가 모두 통과했고, 실제 Auto 질문에 프로젝트 내용대로 정확히 답했습니다. 실제 모델로 아직 실행하지 않은 것: LLM이 직접 작성한 수정 제안, 외부 도구 위임(도구 미인증).
 - **도구 인증**: Codex·Claude Code는 설치·옵션·샌드박스 실행·미인증 감지까지 실제 CLI로 확인했고, 인증된 실제 작업 실행은 서비스용 자격증명이 필요합니다. Antigravity CLI는 이 호스트에 없어 공식 문서 기준으로 구현했으며 실행 검증은 하지 못했습니다.
 - **Docker Compose**: 이 호스트에 Docker가 없어 이미지 빌드·기동을 검증하지 못했습니다.
 - PostgreSQL `pg_dump`/`pg_restore` 경로의 백업 스크립트(이 호스트에 클라이언트 도구 없음). SQLite 경로는 검증.

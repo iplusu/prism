@@ -22,6 +22,10 @@ from pathlib import Path
 from ..config import get_settings
 from .provider import LLMError, OpenAICompatibleProvider, get_provider
 
+# Reasoning models (e.g. vLLM with a reasoning parser) spend tokens on hidden thinking
+# before the answer, so probes need room beyond the few tokens the answer itself takes.
+_PROBE_TOKENS = 512
+
 _PROBE_TOOL = {
     "type": "function",
     "function": {
@@ -103,9 +107,10 @@ def run_connection_test() -> dict:
     # 3 ------------------------------------------------------------------
     msgs = [{"role": "user", "content": "Reply with exactly the word: pong"}]
     try:
-        r = prov.chat(msgs, max_tokens=16, temperature=0)
+        r = prov.chat(msgs, max_tokens=_PROBE_TOKENS, temperature=0)
         ok = bool(r.content.strip())
-        steps["chat"].update(status="passed" if ok else "failed", detail=f"reply={r.content.strip()[:60]!r} model={r.model!r}",
+        steps["chat"].update(status="passed" if ok else "failed", detail=f"reply={r.content.strip()[:60]!r} model={r.model!r}"
+                             + ("" if ok else f" finish_reason={r.finish_reason!r} usage={r.usage}"),
                              duration_ms=int(r.latency_seconds * 1000))
         report["served_model_id"] = r.model
     except LLMError as e:
@@ -113,7 +118,7 @@ def run_connection_test() -> dict:
     t0 = time.monotonic()
     try:
         chunks, first = [], None
-        for d in prov.chat_stream(msgs, max_tokens=16):
+        for d in prov.chat_stream(msgs, max_tokens=_PROBE_TOKENS):
             if first is None:
                 first = time.monotonic() - t0
             chunks.append(d)
@@ -128,7 +133,7 @@ def run_connection_test() -> dict:
     caps = {"tool_calling": False, "json_object": False, "json_schema": False, "streaming": steps["streaming"]["status"] == "passed"}
     try:
         r = prov.chat([{"role": "user", "content": "Use the report_sum tool to report the sum of 17 and 25."}],
-                      tools=[_PROBE_TOOL], tool_choice="auto", max_tokens=200, temperature=0)
+                      tools=[_PROBE_TOOL], tool_choice="auto", max_tokens=_PROBE_TOKENS, temperature=0)
         call = next((c for c in r.tool_calls if c.name == "report_sum"), None)
         if call:
             try:
@@ -145,7 +150,7 @@ def run_connection_test() -> dict:
     jdetail = []
     try:
         r = prov.chat([{"role": "user", "content": 'Return a JSON object {"answer": <the sum of 2 and 3>}.'}],
-                      response_format={"type": "json_object"}, max_tokens=60, temperature=0)
+                      response_format={"type": "json_object"}, max_tokens=_PROBE_TOKENS, temperature=0)
         caps["json_object"] = isinstance(json.loads(r.content), dict)
         jdetail.append(f"json_object ok: {r.content.strip()[:60]}")
     except (LLMError, ValueError) as e:
@@ -154,7 +159,7 @@ def run_connection_test() -> dict:
         schema = {"type": "object", "properties": {"answer": {"type": "integer"}}, "required": ["answer"], "additionalProperties": False}
         r = prov.chat([{"role": "user", "content": "What is 2 + 3? Answer as JSON."}],
                       response_format={"type": "json_schema", "json_schema": {"name": "answer", "schema": schema, "strict": True}},
-                      max_tokens=60, temperature=0)
+                      max_tokens=_PROBE_TOKENS, temperature=0)
         obj = json.loads(r.content)
         caps["json_schema"] = isinstance(obj, dict) and isinstance(obj.get("answer"), int)
         jdetail.append(f"json_schema {'ok' if caps['json_schema'] else 'returned wrong shape'}: {r.content.strip()[:60]}")

@@ -15,7 +15,7 @@ Everything below was actually executed on the development host (Ubuntu 26.04, no
 | Codex CLI | codex-cli 0.165.0 (real, installed with npm, not logged in) |
 | Claude Code | 2.1.312 (real, installed) — run with an isolated, empty config dir |
 | Antigravity | not installed |
-| Orchestrator LLM | not reachable: no `LLM_BASE_URL` given, `a5000` does not resolve from this host |
+| Orchestrator LLM | **real**: vLLM on the a5000 server (4× RTX A5000, Qwen3.8-27B-FP8, served id `qwen38-a5000`, `max_model_len` 262144, Qwen3 reasoning parser), reached over the tailnet through the server's existing passthrough; no server settings changed |
 
 ## Commands and results
 
@@ -28,6 +28,8 @@ Everything below was actually executed on the development host (Ubuntu 26.04, no
 | Migration ↔ models | `alembic upgrade head && alembic check` on PostgreSQL 17 | "No new upgrade operations detected" |
 | Browser E2E | `e2e/verify.mjs` against `scripts/serve.sh` (PostgreSQL, collab on, DEMO_MODE on) | **14/14 steps passed**; screenshots in `docs/screenshots/` |
 | Backup → destroy → restore | `scripts/backup.sh`, delete project + DB, `scripts/restore.sh` (SQLite) | project text and labelled versions restored (found and fixed a WAL-file bug in restore) |
+| Orchestrator LLM, real | `python -m app.cli llm-test` against the a5000 server | **7/7 steps passed**: reachability, model id served, chat, streaming, tool calling, `json_object` + `json_schema`, 50 ms timeout → `timeout`. Planning mode chosen: tools |
+| Auto task, real LLM | temporary sample project on the deployed service, `mode=auto`, question about title and sections | completed in 15 s, planned via tool calling, answered directly (no external tool) with the correct title and the 4 sections; project deleted afterwards |
 | Backup, PostgreSQL | `scripts/backup.sh` on the production PostgreSQL 17.11 instance (pg_dump 17.11) | custom-format `db.dump` written; `sha256sum -c SHA256SUMS` OK for all 3 files; `pg_restore --list` reads it (13 table-data entries). Restore not run |
 
 ## What the backend tests cover (`backend/tests`)
@@ -74,11 +76,12 @@ Screenshots: `docs/screenshots/01-login.png` … `11-narrow-dark.png`.
 * Sandbox: binaries reached through a chain of symlinks (npm global bin → package) were not visible inside bwrap; the earlier lenient test hid it. Fixed (bind every hop) and the test now requires `needs_auth` and no `execvp` error.
 * Collab: WebSocket messages arriving while a document was loading were dropped (clients never synced). Fixed (queue until ready).
 * LLM timeout probe could pass/fail depending on server speed. Now a long generation under a 50 ms budget; a server that answers faster is reported as "not exercised".
+* LLM connection test against the real reasoning model: chat and streaming probes had a 16-token budget that the model's hidden reasoning used up, so they reported an empty reply. Probes now allow 512 tokens and report `finish_reason`/usage when the reply is empty.
 * SQLite timestamps lacked a timezone; restore left stale WAL files; conflicts on binary/added/deleted files were not resolvable. Fixed.
 
 ## Not verified here
 
-* **Real orchestrator LLM**: no endpoint/model id available; only the fake server was used. Run `python -m app.cli llm-test` once `LLM_BASE_URL`/`LLM_MODEL` are set.
+* **Real orchestrator LLM, beyond Q&A**: connection and a direct answer were verified with the real model (above); an LLM-written edit proposal and delegation to an external tool have not been run with it yet (the latter also needs authenticated tools). The automated suite still uses the fake server.
 * **Authenticated tool runs** (an actual edit made by Codex / Claude Code / Antigravity): need service credentials (`tool-homes/` login or API keys).
 * **Antigravity CLI** at all (not installed); adapter follows the official docs and checks flags at runtime.
 * **Docker Compose** build/start (no Docker on this host).
