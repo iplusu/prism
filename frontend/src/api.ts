@@ -175,10 +175,11 @@ export const api = {
     ),
 
   review: (pid: string) => request<ReviewReport>(`${P(pid)}/review`),
-  complete: (pid: string, path: string, prefix: string, suffix: string, signal?: AbortSignal) =>
+  completeModels: () => request<{ default: string; models: string[] }>("/api/complete/models"),
+  complete: (pid: string, path: string, prefix: string, suffix: string, model: string | null, signal?: AbortSignal) =>
     request<{ completion: string; model: string; latency_seconds?: number }>(`${P(pid)}/complete`, {
       method: "POST",
-      body: { path, prefix, suffix },
+      body: { path, prefix, suffix, model },
       signal,
     }),
   searchPapers: (q: string) => request<PaperHit[]>(`/api/references/search?q=${enc(q)}`),

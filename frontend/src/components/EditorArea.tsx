@@ -22,7 +22,14 @@ interface Props {
   jump: JumpTarget | null;
   diagnostics: Diagnostic[];
   completion: { current: CompletionData };
-  ai: { on: boolean; error: string | null; toggle: () => void };
+  ai: {
+    on: boolean;
+    error: string | null;
+    toggle: () => void;
+    model: string | null;
+    models: { default: string; models: string[] } | null;
+    setModel: (m: string | null) => void;
+  };
   onSelection: (s: SelectionInfo | null) => void;
   onSaveState: (path: string, s: SaveState) => void;
   onSaved: () => void;
@@ -106,6 +113,23 @@ export default function EditorArea(p: Props) {
           );
         })}
         <div className="spacer" />
+        {!p.readOnly && p.ai.on && p.ai.models && (
+          <select
+            className="ai-model"
+            aria-label="Model for AI completion"
+            value={p.ai.model && p.ai.models.models.includes(p.ai.model) ? p.ai.model : ""}
+            onChange={(e) => p.ai.setModel(e.target.value || null)}
+          >
+            <option value="">Default ({p.ai.models.default})</option>
+            {p.ai.models.models
+              .filter((m) => m !== p.ai.models!.default)
+              .map((m) => (
+                <option key={m} value={m}>
+                  {m}
+                </option>
+              ))}
+          </select>
+        )}
         {!p.readOnly && (
           <button
             className={`btn btn-sm btn-ghost ai-toggle ${p.ai.on ? "on" : ""} ${p.ai.on && p.ai.error ? "bad" : ""}`}

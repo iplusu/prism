@@ -96,3 +96,28 @@ def test_real_llm_completion(alice, monkeypatch):
     out = r.json()
     assert out["completion"].strip() and "<think>" not in out["completion"] and "```" not in out["completion"]
     print("real completion:", repr(out["completion"]), out["latency_seconds"], "s")
+
+
+class _Models(FakeProvider):  # TEST FAKE
+    model = "default-m"
+
+    def list_models(self):
+        return [{"id": "default-m"}, {"id": "small-m"}]
+
+
+def test_model_choice_is_limited_to_served_models(alice, monkeypatch):
+    s = comp.get_settings()
+    monkeypatch.setattr(s, "llm_model", "default-m")
+    monkeypatch.setattr(s, "llm_completion_model", "")
+    monkeypatch.setattr(comp, "_models_cache", (0.0, []))
+    made = []
+    monkeypatch.setattr(comp, "get_provider", lambda: made.append(_Models()) or made[-1])
+    pid = new_sample_project(alice)["id"]
+    assert alice.get("/api/complete/models").json() == {"default": "default-m", "models": ["default-m", "small-m"]}
+    assert _post(alice, pid).status_code == 200 and made[-1].model == "default-m"
+    r = alice.post(f"/api/projects/{pid}/complete", json={"path": "main.tex", "prefix": PRE, "model": "small-m"})
+    assert r.status_code == 200 and made[-1].model == "small-m"
+    r = alice.post(f"/api/projects/{pid}/complete", json={"path": "main.tex", "prefix": PRE, "model": "evil-m"})
+    assert r.status_code == 400 and "not served" in r.json()["detail"]
+    monkeypatch.setattr(s, "llm_completion_model", "small-m")  # configured default is used when no choice is sent
+    assert _post(alice, pid).status_code == 200 and made[-1].model == "small-m"

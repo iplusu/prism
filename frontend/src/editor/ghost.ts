@@ -7,6 +7,8 @@ import { api } from "../api";
 export interface AiCompleteState {
   pid: string;
   on: boolean;
+  /** Model chosen by the user; null = the server's default. */
+  model: string | null;
   /** Called with the failure message, or null after a success. */
   report: (error: string | null) => void;
 }
@@ -87,6 +89,7 @@ export function aiGhostText(ai: { current: AiCompleteState }, path: string): Ext
             path,
             st.sliceDoc(Math.max(0, pos - MAX_PREFIX), pos),
             st.sliceDoc(pos, Math.min(st.doc.length, pos + MAX_SUFFIX)),
+            ai.current.model,
             ctl.signal,
           );
           ai.current.report(null);

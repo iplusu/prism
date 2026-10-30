@@ -50,6 +50,9 @@ await step("toggle is off by default and nothing is requested while typing", asy
 let suggestion;
 await step("turn on, pause after typing: a greyed suggestion appears", async () => {
   await p.click(".ai-toggle");
+  await p.waitForSelector("select.ai-model option", { timeout: 15000 });
+  const opts = await p.$$eval("select.ai-model option", (o) => o.map((x) => x.textContent));
+  if (!opts[0].startsWith("Default (qwen38")) throw new Error("model options: " + opts);
   await p.click(".cm-content");
   await p.keyboard.down("Control"); await p.keyboard.press("End"); await p.keyboard.up("Control");
   await p.keyboard.type(" is", { delay: 20 });

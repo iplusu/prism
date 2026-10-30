@@ -167,13 +167,40 @@ export default function WorkspacePage() {
     }
   });
   const [aiError, setAiError] = useState<string | null>(null);
+  const [aiModel, setAiModelState] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem("prism-ai-complete-model") || null;
+    } catch {
+      return null;
+    }
+  });
+  const [aiModels, setAiModels] = useState<{ default: string; models: string[] } | null>(null);
+  useEffect(() => {
+    if (!aiOn || aiModels) return;
+    api.completeModels().then(setAiModels, (e) => setAiError(errorMessage(e)));
+  }, [aiOn, aiModels]);
+  const setAiModel = useCallback((m: string | null) => {
+    setAiModelState(m);
+    setAiError(null);
+    try {
+      if (m) localStorage.setItem("prism-ai-complete-model", m);
+      else localStorage.removeItem("prism-ai-complete-model");
+    } catch {
+      /* preference just won't persist */
+    }
+  }, []);
+  useEffect(() => {
+    // a remembered model the server no longer serves falls back to the default
+    if (aiModels && aiModel && !aiModels.models.includes(aiModel)) setAiModel(null);
+  }, [aiModels, aiModel]);
   const completion = useRef<CompletionData>({
     labels: [],
     bibKeys: [],
-    ai: { pid, on: aiOn, report: setAiError },
+    ai: { pid, on: aiOn, model: aiModel, report: setAiError },
   });
   completion.current.ai.pid = pid;
   completion.current.ai.on = aiOn;
+  completion.current.ai.model = aiModel;
   const toggleAi = useCallback(() => {
     setAiOn((v) => {
       try {
@@ -343,7 +370,7 @@ export default function WorkspacePage() {
       jump={jump}
       diagnostics={diagnostics}
       completion={completion}
-      ai={{ on: aiOn, error: aiError, toggle: toggleAi }}
+      ai={{ on: aiOn, error: aiError, toggle: toggleAi, model: aiModel, models: aiModels, setModel: setAiModel }}
       onSelection={setSelection}
       onSaveState={onSaveState}
       onSaved={onSaved}

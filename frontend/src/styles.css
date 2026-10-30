@@ -2182,3 +2182,10 @@ td.row-actions {
 .ai-toggle.bad {
   color: var(--danger, #b3261e);
 }
+.ai-model {
+  align-self: center;
+  flex: none;
+  max-width: 180px;
+  font-size: 12px;
+  padding: 1px 4px;
+}

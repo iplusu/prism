@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import re
 import threading
+import time
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -36,6 +37,32 @@ _SYSTEM = (
     "LaTeX style. If nothing sensible can be added, reply with nothing."
 )
 
+_models_cache: tuple[float, list[str]] = (0.0, [])
+
+
+def _served_models(provider) -> list[str]:
+    at, ids = _models_cache
+    if ids and time.monotonic() - at < 60:
+        return ids
+    ids = [m["id"] for m in provider.list_models() if isinstance(m.get("id"), str)]
+    globals()["_models_cache"] = (time.monotonic(), ids)
+    return ids
+
+
+def default_model() -> str:
+    s = get_settings()
+    return s.llm_completion_model or s.llm_model
+
+
+@router.get("/api/complete/models")
+def models(user: User = Depends(current_user)):
+    try:
+        ids = _served_models(get_provider())
+    except LLMError as e:
+        raise HTTPException(503, f"model list unavailable: {e}") from e
+    return {"default": default_model(), "models": ids}
+
+
 _busy: set[str] = set()
 _busy_lock = threading.Lock()
 
@@ -44,6 +71,7 @@ class CompleteIn(BaseModel):
     path: str = Field(min_length=1, max_length=500)
     prefix: str = Field(max_length=MAX_PREFIX * 2)
     suffix: str = Field(default="", max_length=MAX_SUFFIX * 2)
+    model: str | None = Field(default=None, max_length=200)  # must be one the server lists
 
 
 def clean_completion(raw: str, prefix: str) -> str:
@@ -73,6 +101,15 @@ def complete(pid: str, body: CompleteIn, user: User = Depends(current_user), db:
         provider = get_provider()
     except LLMError as e:
         raise HTTPException(503, f"AI completion unavailable: {e}") from e
+    model = body.model or default_model()
+    if model != default_model():  # the configured default is trusted; anything else must be served
+        try:
+            served = _served_models(provider)
+        except LLMError as e:
+            raise HTTPException(503, f"AI completion unavailable: {e}") from e
+        if model not in served:
+            raise HTTPException(400, f"model '{model}' is not served by the LLM server")
+    provider.model = model
     with _busy_lock:
         if user.id in _busy:
             raise HTTPException(429, "a completion is already running")

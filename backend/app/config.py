@@ -43,6 +43,8 @@ class Settings(BaseSettings):
     llm_context_chars: int = Field(default=24000, alias="LLM_CONTEXT_CHARS")
     llm_max_output_tokens: int = Field(default=4096, alias="LLM_MAX_OUTPUT_TOKENS")
     # Inline editor completion is best-effort: a slow answer is useless, so it gets its own short limit.
+    # Model for inline completion; empty = LLM_MODEL. Users may pick any other model the server lists.
+    llm_completion_model: str = Field(default="", alias="LLM_COMPLETION_MODEL")
     llm_completion_timeout_seconds: float = Field(default=20.0, alias="LLM_COMPLETION_TIMEOUT_SECONDS")
     # auto | tools | json  (auto = use the capability found by the connection test)
     llm_planning_mode: str = Field(default="auto", alias="LLM_PLANNING_MODE")
