@@ -10,6 +10,9 @@ A browser-based paper-writing tool that runs on a lab server. One screen provide
 - Zotero import: a library, group or collection (API key sent per request, never stored; public groups need none), merged into the `.bib` without duplicating works already there
 - arXiv preflight (Check tab) and "arXiv source (.zip)" export with the `.bbl` of your last compile; rules are taken from arXiv's help pages
 - AI analysis presets (AI panel): reviewer report, terminology consistency, missing citations; the server lets them answer only, never edit or call a tool
+- Compile any `.tex` file: Compile builds the open file and names the PDF after it (a section file without `\documentclass` builds the main file instead); a switch makes it always build the main file
+- Drag and drop: drop files or whole folders onto the file panel or onto a folder to upload them
+- Ask AI about a selection: select text in the editor and press "Ask AI about selection"; the selected lines become the AI request's context
 - Auto compile (opt-in, off by default): compiles a few seconds after you stop editing; a failing text is tried once, not in a loop
 - AI autocomplete (opt-in, off by default): greyed inline suggestion at the end of a line after a pause, Tab accepts, Esc dismisses; uses the orchestrator LLM, one request per user at a time
 - Manuscript check (no AI): undefined citations/references, duplicate labels and keys, missing figures and inputs, TODO markers, each linked to its line
