@@ -13,6 +13,7 @@ A browser-based paper-writing tool that runs on a lab server. One screen provide
 - Compile any `.tex` file: Compile builds the open file and names the PDF after it (a section file without `\documentclass` builds the main file instead); a switch makes it always build the main file
 - Drag and drop: drop files or whole folders onto the file panel or onto a folder to upload them
 - Ask AI about a selection: select text in the editor and press "Ask AI about selection"; the selected lines become the AI request's context
+- Failed builds: a missing TeX package (`File 'x.sty' not found`) can be installed with one click (`tlmgr`, official TeX Live repository only; editors; switch `ALLOW_TEX_PACKAGE_INSTALL`) and the paper is recompiled; other LaTeX errors offer "Fix with AI", which creates an ordinary reviewed task
 - Auto compile (opt-in, off by default): compiles a few seconds after you stop editing; a failing text is tried once, not in a loop
 - AI autocomplete (opt-in, off by default): greyed inline suggestion at the end of a line after a pause, Tab accepts, Esc dismisses; uses the orchestrator LLM, one request per user at a time
 - Manuscript check (no AI): undefined citations/references, duplicate labels and keys, missing figures and inputs, TODO markers, each linked to its line
