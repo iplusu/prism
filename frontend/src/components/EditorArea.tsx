@@ -30,6 +30,8 @@ interface Props {
     models: { default: string; models: string[] } | null;
     setModel: (m: string | null) => void;
   };
+  /** Bumped to remount the editor after files were changed behind its back. */
+  epoch: number;
   onSelection: (s: SelectionInfo | null) => void;
   selection: SelectionInfo | null;
   onAskAi: () => void;
@@ -64,7 +66,7 @@ export default function EditorArea(p: Props) {
   } else if (p.collab.enabled && p.collab.session) {
     body = (
       <CollabEditor
-        key={p.active}
+        key={`${p.active}:${p.epoch}`}
         pid={p.pid}
         path={p.active}
         session={p.collab.session}
@@ -78,7 +80,7 @@ export default function EditorArea(p: Props) {
   } else {
     body = (
       <RestEditor
-        key={p.active}
+        key={`${p.active}:${p.epoch}`}
         pid={p.pid}
         path={p.active}
         readOnly={p.readOnly}

@@ -232,13 +232,9 @@ function ProposalView({
         {canEdit && (
           <div className="row-actions proposal-actions">
             {p.status === "ready" && totals.chosen === totals.total && (
-              <ConfirmButton
-                className="btn btn-primary"
-                label="Apply all changes"
-                question="Apply all changes to the manuscript?"
-                confirmLabel="Apply"
-                onConfirm={() => apply.run()}
-              />
+              <button className="btn btn-primary" disabled={apply.busy} onClick={() => void apply.run()}>
+                {apply.busy ? "Applying…" : "Apply all changes"}
+              </button>
             )}
             {p.status === "ready" && totals.chosen < totals.total && (
               <button className="btn btn-primary" disabled={totals.chosen === 0 || select.busy} onClick={() => select.run()}>

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import shutil
 from pathlib import Path
 
@@ -14,6 +15,8 @@ from .config import get_settings
 from .models import Build, Project, now
 from .projects import documents, store
 from .security.redact import redact
+
+log = logging.getLogger("prism.builds")
 
 
 def build_dir(bid: str) -> Path:
@@ -65,7 +68,10 @@ def request_build(db: Session, project: Project, user_name: str, user_id: str | 
     return b, fell_back_from
 
 
-def run_build(db: Session, build: Build, files: dict[str, bytes] | None = None, should_cancel=lambda: False) -> Build:
+def run_build(db: Session, build: Build, files: dict[str, bytes] | None = None, should_cancel=lambda: False,
+              hold_missing: bool = False, log_prefix: str = "") -> Build:
+    """hold_missing: a failure caused by missing TeX files is not reported as final (status stays `running`)
+    because the caller is about to install the packages and rebuild."""
     build.status = "running"
     build.started_at = now()
     db.commit()
@@ -75,12 +81,14 @@ def run_build(db: Session, build: Build, files: dict[str, bytes] | None = None, 
     build.status = res.status
     build.isolation = res.isolation
     build.exit_code = res.exit_code
-    build.log_text = redact(res.log[-400_000:])
+    build.log_text = log_prefix + redact(res.log[-400_000:])
     build.diagnostics = res.diagnostics[:500]
     build.has_pdf = res.pdf_path is not None
     build.error = redact(res.error)
     build.finished_at = now()
     build.duration_seconds = res.duration
+    if hold_missing and res.status == "failed" and texpkg.missing_files(res.log):
+        build.status, build.finished_at = "running", None
     # Remove sources/aux files; keep the PDF.
     src = build_dir(build.id) / "src"
     if src.exists():
@@ -93,6 +101,51 @@ def run_build(db: Session, build: Build, files: dict[str, bytes] | None = None, 
             db.commit()
             _prune(db, proj, keep={build.id, prev})
     db.commit()
+    return build
+
+
+def _note(installed: list[str]) -> str:
+    return f"[Prism] installed TeX package(s) {', '.join(installed)} and rebuilt\n\n"
+
+
+def run_build_auto(db: Session, build: Build, **kw) -> Build:
+    """run_build, and when it fails only because TeX Live packages are missing, install them and rebuild.
+
+    At most 5 files per build and 2 rounds; each file is tried once. A file that no TeX Live package
+    provides (for example a file of the user's own project) is left to fail with its normal error. While
+    this happens the build stays `running`: the failure is not shown until it is really final.
+    """
+    s = get_settings()
+    auto = build.kind == "main" and s.allow_tex_package_install and s.auto_install_tex_packages
+    run_build(db, build, hold_missing=auto, **kw)
+    if not auto:
+        return build
+    tried: set[str] = set()
+    installed: list[str] = []
+    for rnd in range(2):
+        if build.status != "running":  # finished: succeeded, cancelled, or failed for another reason
+            break
+        wanted = [f for f in texpkg.missing_files(build.log_text or "") if f not in tried][:5]
+        got = 0
+        for f in wanted:
+            tried.add(f)
+            try:
+                res = texpkg.install_for(f)
+            except texpkg.TexPackageError as e:
+                log.warning("automatic TeX package install failed for %s: %s", f, e)
+                continue
+            if res["package"]:
+                installed.append(res["package"])
+                got += 1
+                log.warning("TeX package installed automatically: file=%s package=%s project=%s", f, res["package"], build.project_id)
+        if not got:
+            build.status, build.finished_at = "failed", now()
+            if installed and not (build.log_text or "").startswith("[Prism]"):
+                build.log_text = _note(installed) + (build.log_text or "")
+            db.commit()
+            break
+        # the note goes into the same commit as the rebuild's final state, so it is never missing from a finished build
+        run_build(db, build, hold_missing=rnd == 0, log_prefix=_note(installed), **kw)
     return build
 
 

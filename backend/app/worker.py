@@ -12,7 +12,7 @@ import threading
 import time
 
 from . import jobs
-from .builds import run_build
+from .builds import run_build, run_build_auto
 from .config import get_settings
 from .db import SessionLocal
 from .models import Build, Job, Project, Proposal, Task, now
@@ -39,7 +39,7 @@ def handle(job: Job) -> None:
             if b is None:
                 return
             try:
-                run_build(db, b)
+                run_build_auto(db, b)
             except Exception as e:  # noqa: BLE001
                 # Never leave the build "running": the UI would show it compiling forever.
                 db.rollback()

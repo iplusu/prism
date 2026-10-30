@@ -115,13 +115,13 @@ def test_project_with_no_files_fails_cleanly_instead_of_hanging(alice):
 
 
 def test_worker_crash_does_not_leave_the_build_running(alice, monkeypatch):
-    import app.worker as worker
+    import app.builds as builds
 
     def boom(*a, **k):
         raise RuntimeError("simulated crash before the build finished")
 
     pid = new_sample_project(alice)["id"]
-    monkeypatch.setattr(worker, "run_build", boom)
+    monkeypatch.setattr(builds, "run_build", boom)
     b = alice.post(f"/api/projects/{pid}/builds").json()
     drain()
     got = alice.get(f"/api/builds/{b['id']}").json()

@@ -24,6 +24,7 @@ os.environ.update({
     "PRISM_SECRET_KEY": "test-secret-key-0123456789",
     "COMPILE_SANDBOX": "bwrap",
     "TOOL_SANDBOX": "bwrap",
+    "TEX_PACKAGE_AUTO_INSTALL": "false",  # the suite must never run the real tlmgr; the tests that cover it turn it on with a fake
     "COLLAB_ENABLED": "false",
     "DEMO_MODE": "false",
     # settings a deployment (or a sourced .env in the calling shell) may have changed

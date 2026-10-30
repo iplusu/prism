@@ -189,6 +189,8 @@ export interface TaskContextSpec {
   selection?: { from_line: number; to_line: number; text: string } | null;
   /** Analysis request: the server lets it answer only, never edit or delegate. */
   answer_only?: boolean;
+  /** Reviewer report: independent read-only reviews by several tools, merged by the orchestrator. */
+  review?: { tools?: string[]; persona?: string; personas?: Record<string, string> };
 }
 
 export interface Task {

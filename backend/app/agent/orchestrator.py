@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 
 from .. import jobs
 from ..adapters.base import AdapterError, RunSpec
-from ..adapters.registry import get_adapter
+from ..adapters.registry import adapters, get_adapter
 from ..config import get_settings
 from ..llm.provider import LLMError, get_provider
 from ..models import Build, Message, Project, Task, ToolRun, User, now
@@ -26,7 +26,7 @@ from ..projects import documents, store
 from ..proposals import service as proposals
 from ..security.paths import glob_match, is_protected
 from ..security.redact import redact
-from . import planner
+from . import planner, reviewers
 from .context import build_context
 from .contract import DEFAULT_CHECKS, EXECUTORS, DelegationRequest, Edit, TaskContract
 from .policy import effective_policy, select_executor
@@ -109,6 +109,8 @@ class Runner:
         t = self.task
         s = self.settings
         mode = t.mode
+        if (t.context_spec or {}).get("review") is not None:
+            return self._review(t.context_spec["review"])
         answer_only = bool((t.context_spec or {}).get("answer_only"))  # analysis presets: the server forbids edits
         explicit_tool = (mode in EXECUTORS or mode == "demo") and not answer_only
         llm_ok = s.llm_configured
@@ -159,6 +161,77 @@ class Runner:
                      "Configure LLM_BASE_URL / LLM_MODEL for real answers.", kind="answer", demo=True)
             return self._finish("completed")
         return self._delegate(self._server_delegation(), plan_source="demo", message="")
+
+    def _review(self, spec: dict) -> None:
+        """Reviewer report: the chosen tools review in parallel (read-only), then the orchestrator merges the reports."""
+        import threading
+
+        t, s = self.task, self.settings
+        if not self.policy["allow_external"]:
+            raise RuntimeError("external tools are disabled by the project policy")
+        self.deadline = time.monotonic() + s.review_task_timeout_seconds  # reviews are slow: a longer limit than edits
+        reg = adapters()
+
+        def available(name: str) -> tuple[bool, str]:
+            a = reg.get(name)
+            if a is None:
+                return False, "no adapter"
+            h = a.health()
+            return h["status"] == "available", f"{h['status']}: {h.get('detail', '')}"
+
+        use, skipped = reviewers.tool_candidates(spec.get("tools"), self.policy["allowed_executors"], available)
+        for sk in skipped:
+            self.emit("review_skip", f"{reviewers.LABELS.get(sk['tool'], sk['tool'])} not used: {sk['reason']}", **sk)
+        if not use:
+            raise RuntimeError("no reviewer tool is available: " + "; ".join(f"{x['tool']} ({x['reason']})" for x in skipped)
+                               + " (see Settings → Tools)")
+        shared = (spec.get("persona") or "").strip() or reviewers.DEFAULT_PERSONA
+        personas = {x: ((spec.get("personas") or {}).get(x) or "").strip() or shared for x in use}
+        self.set_status("running")
+        self.emit("review", f"{len(use)} reviewer(s) in parallel: " + ", ".join(reviewers.LABELS.get(x, x) for x in use),
+                  tools=use, personas=personas)
+        cancel = threading.Event()
+        timeout = max(60, min(s.review_tool_timeout_seconds, int(self.deadline - time.monotonic())))
+        results: dict[str, dict] = {}
+
+        def work(tool: str) -> None:
+            try:
+                results[tool] = reviewers.run_review_tool(
+                    task_id=t.id, project_id=self.project.id, ex=tool, files=self.files, timeout=timeout,
+                    prompt=reviewers.reviewer_prompt(personas[tool], self.project.main_file, t.request), should_cancel=cancel.is_set)
+            except Exception as e:  # noqa: BLE001  one reviewer failing must not stop the others
+                results[tool] = {"tool": tool, "status": "failed", "text": "", "error": redact(f"{type(e).__name__}: {e}")[:500]}
+
+        threads = [threading.Thread(target=work, args=(x,), daemon=True) for x in use]
+        for th in threads:
+            th.start()
+        while any(th.is_alive() for th in threads):
+            if not cancel.is_set() and (self.cancelled() or time.monotonic() > self.deadline):
+                cancel.set()
+            time.sleep(1)
+        if self.cancelled():
+            raise TaskCancelled()
+        reviews = [results[x] for x in use if x in results]
+        if not any(r["status"] == "succeeded" for r in reviews):
+            raise RuntimeError("no reviewer delivered a review: " + "; ".join(
+                f"{reviewers.LABELS.get(r['tool'], r['tool'])}: {r['status']} {r['error'][:150]}" for r in reviews))
+        merged, note = None, ""
+        if s.llm_configured:
+            self.emit("llm", f"consolidating {sum(r['status'] == 'succeeded' for r in reviews)} review(s) with {s.llm_model}")
+            try:
+                merged = reviewers.synthesize(get_provider(), reviewers.synthesis_messages(t.request, personas, reviews, self.project.main_file))
+            except LLMError as e:
+                note = f"The orchestrator could not consolidate the reviews ({e.message}); the individual reviews follow unmerged."
+        else:
+            note = "No orchestrator LLM is configured, so the reviews are shown unmerged."
+        body = merged if merged else reviewers.raw_reviews_text(reviews)
+        if note:
+            self.emit("llm_invalid", note)
+            body = note + "\n\n" + body
+        self.say(body, kind="review_report", merged=merged is not None, skipped=skipped,
+                 reviews=[{"tool": r["tool"], "label": reviewers.LABELS.get(r["tool"], r["tool"]), "status": r["status"],
+                           "persona": personas.get(r["tool"], ""), "text": r["text"], "error": r["error"][:500]} for r in reviews])
+        return self._finish("completed")
 
     def _finish(self, status: str) -> None:
         self.set_status(status)

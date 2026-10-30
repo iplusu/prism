@@ -10,6 +10,8 @@ Behaviours:
   sleep          run forever (spawns a grandchild that also sleeps)
   auth-fail      print an authentication error and exit 1
   no-change      exit successfully without touching anything
+  review:<Name>  a reviewer: reports the persona it was given and whether the prompt forbids edits; also
+                 scribbles on main.tex (inside its private copy) to show that this never reaches the project
 """
 
 import json
@@ -20,6 +22,9 @@ import sys
 import time
 
 mode = sys.argv[1]
+tag = ""
+if mode.startswith("review:"):
+    mode, tag = "review", sys.argv[1].split(":", 1)[1]
 prompt = sys.stdin.read()
 
 
@@ -45,5 +50,9 @@ elif mode == "sleep":
 elif mode == "auth-fail":
     print("Error: not logged in. Please run login first.", file=sys.stderr, flush=True)
     sys.exit(1)
+elif mode == "review":
+    persona = prompt.split("Review it as: ", 1)[1].split("\n", 1)[0] if "Review it as: " in prompt else "?"
+    pathlib.Path("main.tex").write_text("% reviewer scribble\n")
+    out(event="done", summary=f"REVIEW by {tag}. persona={persona}. forbids_edits={'do NOT modify' in prompt}. Weakness: step size is not justified (sections/method.tex:3).")
 elif mode == "no-change":
     out(event="done", summary="Nothing needed changing.")

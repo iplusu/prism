@@ -6,7 +6,7 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -25,11 +25,26 @@ class Selection(BaseModel):
     text: str = Field(max_length=100_000)
 
 
+class ReviewIn(BaseModel):
+    """Reviewer report: which tools review and as whom (a persona the user writes)."""
+    tools: list[Literal["codex", "claude", "antigravity"]] | None = None  # default: every tool that is allowed and available
+    persona: str = Field(default="", max_length=2000)  # shared by all reviewers, e.g. "an ACL area chair"
+    personas: dict[Literal["codex", "claude", "antigravity"], str] = Field(default_factory=dict)  # per-tool override
+
+    @field_validator("personas")
+    @classmethod
+    def _short(cls, v):
+        if any(len(x) > 2000 for x in v.values()):
+            raise ValueError("a persona is limited to 2000 characters")
+        return v
+
+
 class ContextIn(BaseModel):
     scope: Literal["selection", "file", "project"] = "project"
     path: str | None = None
     selection: Selection | None = None
     answer_only: bool = False  # analysis presets: the task may only answer, never edit or delegate
+    review: ReviewIn | None = None  # Reviewer report: independent read-only reviews by several tools, then one consolidated report
 
 
 class TaskIn(BaseModel):

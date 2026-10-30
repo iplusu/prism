@@ -2270,3 +2270,9 @@ td.row-actions {
 /* failed-build help: install a missing package / fix with AI */
 .build-help { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; margin: 6px 0; border: 1px solid var(--border); border-radius: 6px; background: var(--surface-2, transparent); }
 .build-help-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+
+/* Reviewer report: setup panel and the per-tool reviews under the merged report */
+.review-setup { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; margin: 6px 0; border: 1px solid var(--border); border-radius: 6px; }
+.review-reports { margin-top: 8px; display: flex; flex-direction: column; gap: 4px; }
+.review-one { border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; }
+.review-one summary { cursor: pointer; }

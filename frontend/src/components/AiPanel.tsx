@@ -22,17 +22,12 @@ interface Props {
   /** Changes whenever the project status poll sees different tasks/proposals. */
   refreshKey: string;
   onTaskChange: () => void;
+  /** Proposal files were just written to the manuscript: reload them in the editor. */
+  onApplied: (paths: string[]) => void;
 }
 
 // Analysis presets. They run with answer_only: the server never lets them edit files or call a tool.
 const PRESETS: { id: string; label: string; title: string; prompt: string }[] = [
-  {
-    id: "review",
-    label: "Reviewer report",
-    title: "A critical but fair peer-review of the manuscript. Answers only; changes nothing.",
-    prompt:
-      "Review this manuscript as a critical but fair peer reviewer. Give: a two-sentence summary of the claimed contribution; the main strengths; the main weaknesses, each tied to a file and line; questions for the authors; and presentation problems (unclear definitions, notation, figures). Use only what is in the project text. Do not invent related work or citations. Do not change any file. Reply in the language of the manuscript.",
-  },
   {
     id: "terms",
     label: "Terminology",
@@ -120,6 +115,27 @@ export default function AiPanel(p: Props) {
     refreshAll();
   });
 
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const [persona, setPersona] = useState("");
+  const [reviewTools, setReviewTools] = useState<Record<string, boolean>>({});
+  const sys = useAsync(() => (reviewOpen ? api.system() : Promise.resolve(null)), [reviewOpen]);
+  const reviewers = useMemo(
+    () => (sys.data?.tools ?? []).filter((x) => ["codex", "claude", "antigravity"].includes(x.name)),
+    [sys.data],
+  );
+  const chosen = reviewers.filter((x) => x.status === "available" && reviewTools[x.name] !== false).map((x) => x.name);
+  const startReview = useAction(async () => {
+    const t = await api.createTask(
+      p.pid,
+      persona.trim() ? `Reviewer report as: ${persona.trim()}` : "Reviewer report",
+      "llm",
+      { scope: "project", review: { tools: chosen, persona: persona.trim() } },
+    );
+    tasks.setData([t, ...(tasks.data ?? [])]);
+    setReviewOpen(false);
+    refreshAll();
+  });
+
   const preset = useAction(async (prompt: string) => {
     const t = await api.createTask(p.pid, prompt, "llm", { scope: "project", answer_only: true });
     tasks.setData([t, ...(tasks.data ?? [])]);
@@ -161,6 +177,8 @@ export default function AiPanel(p: Props) {
             canEdit={p.canEdit}
             onChanged={refreshAll}
             onReview={(id) => navigate(`/p/${p.pid}/review/${id}`)}
+            onApplied={p.onApplied}
+            reloadProposals={() => proposals.reload()}
           />
         ))}
       </div>
@@ -173,6 +191,38 @@ export default function AiPanel(p: Props) {
               </button>
             ))}
           </div>
+          <button type="button" className="btn btn-sm" aria-expanded={reviewOpen} disabled={send.busy || preset.busy} onClick={() => setReviewOpen((v) => !v)}
+            title="Codex, Claude Code and Antigravity each review the paper read-only; the orchestrator merges their reviews and proposes improvements.">
+            Reviewer report…
+          </button>
+          {reviewOpen && (
+            <div className="review-setup small" role="group" aria-label="Reviewer report">
+              <div className="tiny muted">Each selected tool reads the paper as a separate reviewer (read-only, in its sandbox); the orchestrator then merges the reviews. Takes several minutes.</div>
+              {sys.loading && !sys.data && <Loading text="Checking tools…" />}
+              {reviewers.map((x) => {
+                const ok = x.status === "available";
+                return (
+                  <label key={x.name} className="check-row" title={ok ? "" : `${x.status}: ${x.detail}`}>
+                    <input type="checkbox" disabled={!ok} checked={ok && reviewTools[x.name] !== false} onChange={(e) => setReviewTools((s) => ({ ...s, [x.name]: e.target.checked }))} />{" "}
+                    {x.label} {!ok && <span className="muted tiny">({x.status})</span>}
+                  </label>
+                );
+              })}
+              <label className="field">
+                <span className="tiny muted">Reviewer persona (optional): who should the reviewers be?</span>
+                <input value={persona} maxLength={2000} placeholder="e.g. an ACL area chair who cares about reproducibility" onChange={(e) => setPersona(e.target.value)} />
+              </label>
+              <div className="row-actions">
+                <button type="button" className="btn btn-sm btn-primary" disabled={chosen.length === 0 || startReview.busy} onClick={() => void startReview.run()}>
+                  {startReview.busy ? "Starting…" : `Run ${chosen.length} reviewer${chosen.length === 1 ? "" : "s"}`}
+                </button>
+                <button type="button" className="btn btn-sm" onClick={() => setReviewOpen(false)}>
+                  Cancel
+                </button>
+              </div>
+              <ErrorBox error={startReview.error} />
+            </div>
+          )}
           <ErrorBox error={preset.error} />
           <fieldset className="ctx-select">
             <legend className="sr-only">Context</legend>
@@ -262,6 +312,8 @@ function MessageItem({
   canEdit,
   onChanged,
   onReview,
+  onApplied,
+  reloadProposals,
 }: {
   m: ChatMessage;
   task: Task | undefined;
@@ -269,6 +321,8 @@ function MessageItem({
   canEdit: boolean;
   onChanged: () => void;
   onReview: (id: string) => void;
+  onApplied: (paths: string[]) => void;
+  reloadProposals: () => void;
 }) {
   const meta = m.meta ?? {};
   const ctx = meta.context as TaskContextSpec | undefined;
@@ -300,12 +354,79 @@ function MessageItem({
         )}
       </div>
       <div className="msg-body pre-wrap">{m.content}</div>
-      {propId && <ProposalCard id={propId} proposal={proposal} onReview={onReview} />}
+      {Array.isArray(meta.reviews) && (
+        <div className="review-reports">
+          {(meta.reviews as { tool: string; label: string; status: string; persona: string; text: string; error: string }[]).map((r) => (
+            <details key={r.tool} className="review-one">
+              <summary className="small">
+                {r.label} · {r.status === "succeeded" ? "review" : r.status}
+                {r.persona && <span className="muted tiny"> · as {r.persona}</span>}
+              </summary>
+              <div className="pre-wrap small">{r.status === "succeeded" ? r.text : r.error || "no review"}</div>
+            </details>
+          ))}
+        </div>
+      )}
+      {propId && <ProposalCard id={propId} proposal={proposal} canEdit={canEdit} onReview={onReview} onChanged={onChanged} onApplied={onApplied} reloadProposals={reloadProposals} />}
     </div>
   );
 }
 
-function ProposalCard({ id, proposal, onReview }: { id: string; proposal: Proposal | undefined; onReview: (id: string) => void }) {
+function ProposalCard({
+  id,
+  proposal,
+  canEdit,
+  onReview,
+  onChanged,
+  onApplied,
+  reloadProposals,
+}: {
+  id: string;
+  proposal: Proposal | undefined;
+  canEdit: boolean;
+  onReview: (id: string) => void;
+  onChanged: () => void;
+  onApplied: (paths: string[]) => void;
+  reloadProposals: () => void;
+}) {
+  // Apply straight from the chat (one click). Only a verified ("ready") proposal offers it; applying is
+  // asynchronous on the server, so follow the status until it is applied (or a conflict/failure shows up).
+  const [waiting, setWaiting] = useState(false);
+  const paths = useRef<string[]>([]);
+  paths.current = proposal?.files.map((f) => f.path) ?? [];
+  const apply = useAction(async () => {
+    await api.applyProposal(id);
+    setWaiting(true);
+    onChanged();
+  });
+  useEffect(() => {
+    if (!waiting) return;
+    let stopped = false;
+    let tries = 0;
+    const tick = async () => {
+      if (stopped) return;
+      const cur = await api.proposal(id).catch(() => null);
+      if (stopped) return;
+      if (cur && cur.status !== "applying" && cur.status !== "ready") {
+        setWaiting(false);
+        if (cur.status === "applied") onApplied(paths.current);
+        reloadProposals();
+        onChanged();
+        return;
+      }
+      if (++tries > 60) {
+        setWaiting(false);
+        return;
+      }
+      window.setTimeout(() => void tick(), 1000);
+    };
+    void tick();
+    return () => {
+      stopped = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [waiting, id]);
+  const busy = apply.busy || waiting || proposal?.status === "applying";
   return (
     <div className="proposal-card">
       <div className="row-actions">
@@ -313,10 +434,16 @@ function ProposalCard({ id, proposal, onReview }: { id: string; proposal: Propos
         {proposal && <Badge status={proposal.status} />}
         {proposal?.demo && <Tag tone="warn">DEMO</Tag>}
         <div className="spacer" />
+        {canEdit && proposal?.status === "ready" && (
+          <button className="btn btn-sm btn-primary" disabled={busy} onClick={() => void apply.run()} title="Apply all changes to the manuscript (it was compiled and checked)">
+            {busy ? "Applying…" : "Apply"}
+          </button>
+        )}
         <button className="btn btn-sm" onClick={() => onReview(id)}>
           <IconReview /> Review changes
         </button>
       </div>
+      <ErrorBox error={apply.error} />
       {proposal && proposal.files.length > 0 && (
         <ul className="plain-list small changed-files">
           {proposal.files.map((f) => (

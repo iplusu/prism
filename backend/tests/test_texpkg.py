@@ -64,3 +64,46 @@ def test_disabled_by_setting(alice, monkeypatch):
     pid, _ = _failing_project(alice)
     monkeypatch.setattr(get_settings(), "allow_tex_package_install", False)
     assert alice.post(f"/api/projects/{pid}/tex-packages", json={"file": "zzfake.sty"}).status_code == 403
+
+
+@pytest.mark.skipif(not tex_status()["available"], reason="TeX Live not installed")
+def test_failed_build_installs_missing_package_and_rebuilds(alice, monkeypatch):
+    """The retry loop, with a FAKE installer: 'installing' zzfake.sty adds that file where the build finds it."""
+    from app.config import get_settings
+
+    pid = new_sample_project(alice)["id"]
+    main = alice.get(f"/api/projects/{pid}").json()["main_file"]
+    t = alice.get(f"/api/projects/{pid}/files/content", params={"path": main}).json()
+    alice.put(f"/api/projects/{pid}/files/content", json={"path": main, "base_sha": t["sha"],
+              "text": t["text"].replace("\\begin{document}", "\\usepackage{zzfake}\n\\begin{document}", 1)})
+    calls = []
+
+    def fake_install(f):
+        calls.append(f)
+        alice.post(f"/api/projects/{pid}/files", json={"path": f, "text": "\\ProvidesPackage{zzfake}\n"})
+        return {"file": f, "package": "zzfake-pkg", "installed": True, "note": ""}
+
+    monkeypatch.setattr(get_settings(), "auto_install_tex_packages", True)
+    monkeypatch.setattr(texpkg, "install_for", fake_install)
+    b = alice.post(f"/api/projects/{pid}/builds").json()
+    drain()
+    got = alice.get(f"/api/builds/{b['id']}").json()
+    # the fake adds the file after the snapshot, so the rebuild of the same snapshot still fails: what matters
+    # here is that the installer ran once for exactly that file and the build says so
+    assert calls == ["zzfake.sty"]
+    assert got["status"] == "failed" and got["finished_at"]  # final, not left "running"
+    assert got["log"].startswith("[Prism] installed TeX package(s) zzfake-pkg and rebuilt")
+
+
+@pytest.mark.skipif(not tex_status()["available"], reason="TeX Live not installed")
+def test_auto_install_is_off_when_disabled(alice, monkeypatch):
+    from app.config import get_settings
+
+    pid, b = _failing_project(alice)
+    monkeypatch.setattr(texpkg, "install_for", lambda f: pytest.fail("must not run"))
+    for attr in ("auto_install_tex_packages", "allow_tex_package_install"):
+        monkeypatch.setattr(get_settings(), "auto_install_tex_packages", attr != "auto_install_tex_packages")
+        monkeypatch.setattr(get_settings(), "allow_tex_package_install", attr != "allow_tex_package_install")
+        nb = alice.post(f"/api/projects/{pid}/builds").json()
+        drain()
+        assert alice.get(f"/api/builds/{nb['id']}").json()["status"] == "failed"

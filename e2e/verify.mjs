@@ -142,9 +142,7 @@ await step("review screen shows diff, checks, candidate PDF; apply", async () =>
   await A.waitForSelector("canvas", { timeout: 20000 });
   await sleep(4000);
   await shot(A, "07c-review-candidate-pdf");
-  await clickButton(A, "Apply all");
-  await sleep(300);
-  await clickButton(A, "Apply", true);  // inline confirmation
+  await clickButton(A, "Apply all");  // one click applies
   await bodyHas(A, "Applied to the manuscript", 120000);
   await shot(A, "08-review-applied");
   await A.goto(`${B}/p/${pid}`, { waitUntil: "networkidle0" });

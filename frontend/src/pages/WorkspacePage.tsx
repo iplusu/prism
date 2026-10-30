@@ -147,6 +147,7 @@ export default function WorkspacePage() {
   const onSaveState = useCallback((path: string, s: SaveState) => setSaveStates((m) => ({ ...m, [path]: s })), []);
   const onSaved = useCallback(() => void refreshStatus(), [refreshStatus]);
   const [selection, setSelection] = useState<SelectionInfo | null>(null);
+  const [editorEpoch, setEditorEpoch] = useState(0); // bumped to remount the editor after an apply (hooks must stay above the early return)
   // "Ask AI" on a selection: the snapshot travels with a nonce so the AI panel can pin it, switch to
   // the selection context and focus its request box (the editor may unmount on narrow screens).
   const [ask, setAsk] = useState<{ sel: SelectionInfo; nonce: number } | null>(null);
@@ -473,6 +474,16 @@ export default function WorkspacePage() {
       }}
     />
   );
+  // A proposal was applied from the AI panel. With collab the editors receive the change live; the REST
+  // editor keeps per-file state, so drop it for the changed files and remount the editor.
+  const onApplied = (paths: string[]) => {
+    if (!collab.enabled) {
+      paths.forEach((x) => cache.delete(x));
+      setEditorEpoch((n) => n + 1);
+    }
+    void files.reload();
+    void refreshStatus();
+  };
   const editor = (
     <EditorArea
       pid={pid}
@@ -489,6 +500,7 @@ export default function WorkspacePage() {
       diagnostics={diagnostics}
       completion={completion}
       ai={{ on: aiOn, error: aiError, toggle: toggleAi, model: aiModel, models: aiModels, setModel: setAiModel }}
+      epoch={editorEpoch}
       onSelection={setSelection}
       selection={selection}
       onAskAi={askAi}
@@ -533,6 +545,7 @@ export default function WorkspacePage() {
       activePath={active}
       refreshKey={refreshKey}
       onTaskChange={() => void refreshStatus()}
+      onApplied={onApplied}
     />
   );
 

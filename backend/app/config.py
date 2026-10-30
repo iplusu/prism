@@ -62,6 +62,8 @@ class Settings(BaseSettings):
     compile_sandbox: str = Field(default="bwrap", alias="COMPILE_SANDBOX")  # bwrap | none
     # A failed build can offer to install the TeX Live package that provides a missing .sty/.cls (tlmgr, official repository only).
     allow_tex_package_install: bool = Field(default=True, alias="ALLOW_TEX_PACKAGE_INSTALL")
+    # With the switch above on, a build that failed only because TeX packages are missing installs them and is rebuilt once.
+    auto_install_tex_packages: bool = Field(default=True, alias="TEX_PACKAGE_AUTO_INSTALL")
     allow_unsandboxed_compile: bool = Field(default=False, alias="ALLOW_UNSANDBOXED_COMPILE")
     compile_timeout_seconds: int = Field(default=180, alias="COMPILE_TIMEOUT_SECONDS")
     compile_memory_mb: int = Field(default=2048, alias="COMPILE_MEMORY_MB")
@@ -90,6 +92,9 @@ class Settings(BaseSettings):
 
     agent_run_timeout_seconds: int = Field(default=600, alias="AGENT_RUN_TIMEOUT_SECONDS")
     agent_task_timeout_seconds: int = Field(default=1500, alias="AGENT_TASK_TIMEOUT_SECONDS")
+    # Reviewer report: several tools read the manuscript in parallel; generous limits because reviews are slow.
+    review_tool_timeout_seconds: int = Field(default=1800, alias="REVIEW_TOOL_TIMEOUT_SECONDS")
+    review_task_timeout_seconds: int = Field(default=3600, alias="REVIEW_TASK_TIMEOUT_SECONDS")
     agent_max_attempts: int = Field(default=2, alias="AGENT_MAX_ATTEMPTS")
     agent_recent_failure_minutes: int = Field(default=30, alias="AGENT_RECENT_FAILURE_MINUTES")
     # Default ordering when several tools could do a job. This is a configurable
