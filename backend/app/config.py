@@ -3,6 +3,7 @@ no endpoints or credentials are hard-coded here."""
 
 from __future__ import annotations
 
+import os
 from functools import lru_cache
 from pathlib import Path
 
@@ -13,7 +14,8 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=str(REPO_ROOT / ".env"), extra="ignore")
+    # PRISM_ENV_FILE is the same override the scripts use; tests point it at os.devnull.
+    model_config = SettingsConfigDict(env_file=os.environ.get("PRISM_ENV_FILE") or str(REPO_ROOT / ".env"), extra="ignore")
 
     # --- core -------------------------------------------------------------
     database_url: str = Field(default=f"sqlite:///{REPO_ROOT / 'var' / 'prism.db'}", alias="DATABASE_URL")
@@ -40,6 +42,8 @@ class Settings(BaseSettings):
     # served model's real context window (not inferred automatically).
     llm_context_chars: int = Field(default=24000, alias="LLM_CONTEXT_CHARS")
     llm_max_output_tokens: int = Field(default=4096, alias="LLM_MAX_OUTPUT_TOKENS")
+    # Inline editor completion is best-effort: a slow answer is useless, so it gets its own short limit.
+    llm_completion_timeout_seconds: float = Field(default=20.0, alias="LLM_COMPLETION_TIMEOUT_SECONDS")
     # auto | tools | json  (auto = use the capability found by the connection test)
     llm_planning_mode: str = Field(default="auto", alias="LLM_PLANNING_MODE")
 

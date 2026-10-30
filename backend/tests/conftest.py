@@ -17,6 +17,8 @@ from pathlib import Path
 
 _TMP = Path(tempfile.mkdtemp(prefix="prism-test-"))
 os.environ.update({
+    # never read the deployment's .env: tests must not inherit its settings or secrets
+    "PRISM_ENV_FILE": os.devnull,
     "DATABASE_URL": os.environ.get("PRISM_TEST_DATABASE_URL") or f"sqlite:///{_TMP / 'test.db'}",
     "PRISM_DATA_DIR": str(_TMP / "data"),
     "PRISM_SECRET_KEY": "test-secret-key-0123456789",
@@ -24,6 +26,13 @@ os.environ.update({
     "TOOL_SANDBOX": "bwrap",
     "COLLAB_ENABLED": "false",
     "DEMO_MODE": "false",
+    # settings a deployment (or a sourced .env in the calling shell) may have changed
+    "PRISM_COOKIE_SECURE": "false",  # the test client speaks plain HTTP
+    "PRISM_ALLOW_SIGNUP": "false",
+    "PRISM_ADMIN_USERNAME": "",
+    "PRISM_ADMIN_PASSWORD": "",
+    "LLM_API_KEY": "",
+    "LLM_TIMEOUT_SECONDS": "30",
     "LLM_BASE_URL": "",
     "LLM_MODEL": "",
     "AGENT_RUN_TIMEOUT_SECONDS": "60",

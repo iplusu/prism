@@ -25,12 +25,14 @@ import {
   type KeyBinding,
 } from "@codemirror/view";
 import type { Diagnostic } from "../types";
+import { aiGhostText, type AiCompleteState } from "./ghost";
 import { languageFor, prismHighlight } from "./languages";
 
 /** Labels and bibliography keys used for \ref / \cite completion. Mutable, owned by the workspace. */
 export interface CompletionData {
   labels: string[];
   bibKeys: { key: string; title: string }[];
+  ai: AiCompleteState;
 }
 
 function latexCompletions(data: { current: CompletionData }) {
@@ -70,6 +72,7 @@ const editorTheme = EditorView.theme({
   ".cm-button": { backgroundImage: "none", background: "var(--bg)", border: "1px solid var(--border-strong)", borderRadius: "4px", color: "var(--fg)" },
   ".cm-tooltip": { backgroundColor: "var(--bg-elevated)", border: "1px solid var(--border)", color: "var(--fg)" },
   ".cm-tooltip-autocomplete > ul > li[aria-selected]": { backgroundColor: "var(--accent)", color: "var(--accent-fg)" },
+  ".cm-ghost": { color: "var(--fg-muted)", opacity: "0.75", fontStyle: "italic", pointerEvents: "none" },
   ".cm-foldPlaceholder": { backgroundColor: "var(--bg-subtle)", border: "1px solid var(--border)" },
   ".cm-ySelectionInfo": { fontFamily: "var(--sans)", opacity: "1", padding: "1px 4px", borderRadius: "3px" },
 });
@@ -97,6 +100,7 @@ export function buildExtensions(o: ExtensionOptions): Extension[] {
     bracketMatching(),
     closeBrackets(),
     autocompletion({ override: [latexCompletions(o.completion)], activateOnTyping: true }),
+    o.readOnly ? [] : aiGhostText({ get current() { return o.completion.current.ai; } }, o.path),
     rectangularSelection(),
     crosshairCursor(),
     highlightActiveLine(),

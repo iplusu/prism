@@ -42,7 +42,7 @@ The model proposes `goal`, `task_kind`, scopes, constraints, checks and optional
 
 ## Executor selection (Auto)
 
-`backend/app/agent/policy.py`. Inputs: the project's allowed executors, per-task-kind routing (optional), the preference order (`AGENT_DEFAULT_ORDER`, default `codex,claude,antigravity` — a configurable preference, **not** a quality ranking), live health (installed / authenticated / flags present), tools already tried in this task, and recent failures (`AGENT_RECENT_FAILURE_MINUTES`; such tools are tried last). An explicit user choice wins but must still be allowed and healthy. On failure the next attempt in Auto mode uses the next tool; auth/unavailable failures with an explicit tool are not retried.
+`backend/app/agent/policy.py`. Inputs: the project's allowed executors, per-task-kind routing (optional), the preference order (`AGENT_DEFAULT_ORDER`, default `codex,claude,antigravity` — a configurable preference, **not** a quality ranking), live health (installed / authenticated / flags present), tools already tried in this task, the tool the orchestrator model suggested (a **preference** in Auto mode: it is tried first, and if it fails the next tool is still tried; only the user's explicit choice pins a tool), and recent failures (`AGENT_RECENT_FAILURE_MINUTES`; such tools are tried last). An explicit user choice wins but must still be allowed and healthy. On failure the next attempt in Auto mode uses the next tool; auth/unavailable failures with an explicit tool are not retried.
 
 ## Adapter interface
 
@@ -66,7 +66,7 @@ codex exec --json --skip-git-repo-check --ephemeral --ignore-rules
 ```
 
 * Sandbox mode: inside Prism's bwrap sandbox Codex's own sandbox cannot start (it needs a nested user namespace; every command and file write failed with "bwrap: No permissions to create a new namespace" in a real run), so Codex runs with `danger-full-access` and the outer sandbox is the boundary: only the work copy, the run directory and `CODEX_HOME` are writable, the host home and other projects are not mounted. Without the outer sandbox (`TOOL_SANDBOX=none`, which requires `ALLOW_UNSANDBOXED_TOOLS=true`) Codex keeps its own `workspace-write` sandbox.
-* Prompt on stdin (`-`). `project_doc_max_bytes=0` disables AGENTS.md loading; `--ignore-rules` skips exec-policy files.
+* Prompt on stdin (`-`). File deletion works (shell access inside the outer sandbox). `project_doc_max_bytes=0` disables AGENTS.md loading; `--ignore-rules` skips exec-policy files.
 * Events (JSONL): `thread.started` (session id), `item.started/completed` with `agent_message`, `command_execution`, `file_change`, `error`, `turn.completed` (usage), `turn.failed`, `error`.
 * Success: exit 0, `turn.completed`, no `turn.failed`/`error`.
 * Auth: `codex login status` with `CODEX_HOME=<tool home>/.codex` (or `CODEX_OPENAI_API_KEY`).
@@ -84,7 +84,7 @@ claude -p --output-format stream-json --verbose
        [--bare] [--model CLAUDE_MODEL] [--max-budget-usd N]
 ```
 
-* Prompt on stdin. No shell tool is offered. `--strict-mcp-config` without a config means no MCP servers (no path back to Prism). `--setting-sources user` reads only the service's own config dir (`CLAUDE_CONFIG_DIR`), never the project's `.claude/`. With an API key, `--bare` also skips hooks, plugins and CLAUDE.md discovery.
+* Prompt on stdin. No shell tool is offered, so **Claude Code cannot delete or move files** (seen in a real run: it created the new files, said it could not remove the old one, and left it; the verification then flagged the duplicated equations). Tasks that need deletions or renames are better routed to Codex (`routing` in the project policy) or finished by hand after review. `--strict-mcp-config` without a config means no MCP servers (no path back to Prism). `--setting-sources user` reads only the service's own config dir (`CLAUDE_CONFIG_DIR`), never the project's `.claude/`. With an API key, `--bare` also skips hooks, plugins and CLAUDE.md discovery.
 * Events (NDJSON): `system/init` (session id, model), `assistant` (text and `tool_use` blocks), `result` (`subtype`, `is_error`, `result`, `total_cost_usd`, `num_turns`).
 * Success: exit 0 and `result.subtype == "success"` and not `is_error`.
 * Auth: `claude auth status` (JSON `loggedIn`) with `CLAUDE_CONFIG_DIR`, or `CLAUDE_ANTHROPIC_API_KEY`.

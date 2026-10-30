@@ -50,6 +50,9 @@ curl -LsSf https://astral.sh/uv/install.sh | sh                                 
 curl -sL https://nodejs.org/dist/v24.22.2/node-v24.22.2-linux-x64.tar.xz | tar xJ -C ~/.local/opt   # Node 24
 curl -sL https://yihui.org/tinytex/install-bin-unix.sh | sh                           # TeX Live (TinyTeX)
 ~/.TinyTeX/bin/x86_64-linux/tlmgr install latexmk biber cleveref caption booktabs natbib biblatex
+# extra packages the official templates (ACL, CVPR, NeurIPS, ICML, arXiv) need; TinyTeX does not ship them:
+~/.TinyTeX/bin/x86_64-linux/tlmgr install environ fancyhdr lineno microtype silence enumitem eso-pic units upquote \
+    forloop lipsum mwe sttools currfile doi mathtools grfext todonotes courier
 # bubblewrap and git: from the OS (apt install bubblewrap git) — usually already present
 ```
 

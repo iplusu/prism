@@ -22,6 +22,7 @@ from ..db import get_db
 from ..deps import current_user, get_project_for, project_role, user_json
 from ..models import Build, Membership, Project, ProjectVersion, Proposal, Task, User, now
 from ..projects import documents, store
+from ..projects import templates as kits
 from ..proposals import diff as pdiff
 from ..proposals import service as proposals
 from ..security.passwords import sign
@@ -49,7 +50,7 @@ BLANK_MAIN = r"""\documentclass[11pt]{article}
 
 class ProjectIn(BaseModel):
     name: str = Field(min_length=1, max_length=200)
-    template: str = "blank"  # blank | sample
+    template: str = "blank"  # blank | sample | an id from projects/templates.py
 
 
 class ProjectPatch(BaseModel):
@@ -142,8 +143,39 @@ def _new_project(db: Session, user: User, name: str) -> Project:
     return p
 
 
+@router.get("/templates")
+def list_templates(user: User = Depends(current_user)):
+    return kits.catalogue()
+
+
+def _from_kit(db: Session, user: User, name: str, template_id: str) -> Project:
+    s = get_settings()
+    try:
+        kit = kits.get(template_id)
+    except kits.TemplateError as e:
+        raise HTTPException(400, str(e)) from e
+    with tempfile.TemporaryDirectory(prefix="prism-kit-") as td:
+        zp, dest = Path(td) / "kit.zip", Path(td) / "x"
+        try:
+            kits.download(kit, zp)
+            res = extract_project_zip(zp, dest, max_total_bytes=s.max_unzipped_mb * 1024 * 1024,
+                                      max_entries=s.max_zip_entries)
+            kits.prepare(kit, dest, res.files)
+        except (kits.TemplateError, ZipImportError) as e:
+            raise HTTPException(502, str(e)) from e
+        p = _new_project(db, user, name)
+        p.main_file = kit.main_file
+        p.description = f"From the {kit.label} template ({kit.source})"
+        store.init_project(p.id, source_dir=dest, author=user.display_name or user.username)
+    return p
+
+
 @router.post("")
 def create_project(body: ProjectIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    if body.template not in ("blank", "sample"):
+        p = _from_kit(db, user, body.name, body.template)
+        db.commit()
+        return project_json(db, p, "owner", detail=True)
     p = _new_project(db, user, body.name)
     if body.template == "sample":
         src = REPO_ROOT / "sample" / "paper"

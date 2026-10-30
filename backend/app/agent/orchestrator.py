@@ -205,14 +205,17 @@ class Runner:
         t = self.task
         if not self.policy["allow_external"]:
             raise RuntimeError("external tools are disabled by the project policy")
-        requested = t.mode if t.mode in (*EXECUTORS, "demo") else d.executor
+        # Only the user's explicit choice pins the tool. A tool the model names in
+        # Auto mode is a preference: it is tried first, but failure still moves on.
+        requested = t.mode if t.mode in (*EXECUTORS, "demo") else "auto"
+        suggested = d.executor if requested == "auto" and d.executor != "auto" else None
         tried: set[str] = set()
         attempts = self.policy["max_attempts"]
         last_error = ""
         for attempt in range(1, attempts + 1):
             self.check_cancel()
-            ex, reason, considered = select_executor(self.db, self.project, requested=requested if requested != "auto" else "auto",
-                                                     task_kind=d.task_kind, exclude=tried if requested == "auto" else set())
+            ex, reason, considered = select_executor(self.db, self.project, requested=requested, task_kind=d.task_kind,
+                                                     exclude=tried if requested == "auto" else set(), prefer=suggested)
             self.emit("executor", reason, considered=considered, attempt=attempt)
             if ex is None:
                 raise RuntimeError(reason + (f" (last error: {last_error})" if last_error else ""))

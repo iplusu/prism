@@ -800,6 +800,15 @@ td.row-actions {
   display: flex;
   margin: 4px 0;
 }
+.radio-block {
+  align-items: flex-start;
+}
+.radio-block input {
+  margin-top: 3px;
+}
+.radio-desc {
+  display: block;
+}
 .form-actions {
   display: flex;
   gap: 8px;
@@ -1133,6 +1142,43 @@ td.row-actions {
 }
 .side-tab-label {
   font-size: 10.5px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.paper-hits {
+  list-style: none;
+  margin: 0;
+  padding: 0 8px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.paper-hit {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  align-items: flex-start;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+.paper-title {
+  font-weight: 600;
+  font-size: 12.5px;
+  line-height: 1.35;
+}
+.check-count {
+  margin-right: 10px;
+}
+.sev-error {
+  color: var(--danger);
+}
+.sev-warning {
+  color: var(--warn);
+}
+.sev-info {
+  color: var(--fg-muted);
 }
 .sidebar-body {
   flex: 1;
@@ -2122,4 +2168,17 @@ td.row-actions {
   .projects-table td:nth-child(2) {
     display: none;
   }
+}
+
+.ai-toggle {
+  flex: none;
+  align-self: center;
+  margin: 0 6px;
+  color: var(--fg-muted);
+}
+.ai-toggle.on {
+  color: var(--accent);
+}
+.ai-toggle.bad {
+  color: var(--danger, #b3261e);
 }

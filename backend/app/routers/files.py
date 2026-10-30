@@ -8,6 +8,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from .. import review
 from ..agent.context import bib_entries, labels, outline
 from ..config import get_settings
 from ..db import get_db
@@ -199,3 +200,9 @@ def search(pid: str, q: str, regex: bool = False, case: bool = False, user: User
                 if len(results) >= 500:
                     return {"results": results, "truncated": True}
     return {"results": results, "truncated": False}
+
+
+@router.get("/review")
+def review_manuscript(pid: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    p, _ = get_project_for(db, pid, user, "viewer")
+    return review.check(_live(pid), p.main_file)

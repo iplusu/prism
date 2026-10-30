@@ -183,3 +183,20 @@ def test_delete_vs_edit_conflict_resolved_by_choice(alice):
     c = _get(alice, child["id"])
     assert c["files"][0]["change"] == "deleted"
     assert {x["check"]: x["status"] for x in c["checks"]}["compiles"] == "failed"
+
+
+def test_moving_equations_between_files_is_not_a_change():
+    # splitting a file moves its equations and numbers; only real differences are reported
+    from app.proposals.analysis import analyze
+
+    eq = b"x $a+b$ \\begin{equation} t = 1/2 \\label{e} \\end{equation} 3.14"
+    base = {"method.tex": b"intro " + eq}
+    cand = {"method_a.tex": b"intro ", "method_b.tex": eq}
+    rep = analyze(base, cand, ["method.tex", "method_a.tex", "method_b.tex"])
+    assert rep["equations"] == {} and rep["numbers"] == {}
+
+    changed = {"method_a.tex": b"intro ", "method_b.tex": eq.replace(b"1/2", b"1/3")}  # one equation really changed
+    rep = analyze(base, changed, ["method.tex", "method_a.tex", "method_b.tex"])
+    assert rep["equations"]["method.tex"]["removed"] == ["t = 1/2 \\label{e}"]
+    assert rep["equations"]["method_b.tex"]["added"] == ["t = 1/3 \\label{e}"]
+    assert rep["numbers"]  # 2 -> 3 is reported too

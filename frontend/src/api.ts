@@ -10,10 +10,13 @@ import type {
   FileEntry,
   LlmTestReport,
   Outline,
+  PaperHit,
   Project,
   ProjectStatus,
   Proposal,
   ProposalDetail,
+  ReferenceImport,
+  ReviewReport,
   Role,
   SearchResult,
   SystemStatus,
@@ -21,6 +24,7 @@ import type {
   TaskContextSpec,
   TaskDetail,
   TaskMode,
+  TemplateInfo,
   ToolHealth,
   User,
   Version,
@@ -123,7 +127,8 @@ export const api = {
 
   // --- projects ---------------------------------------------------------
   projects: (q = "") => request<Project[]>(`/api/projects${q ? `?q=${enc(q)}` : ""}`),
-  createProject: (name: string, template: "blank" | "sample") =>
+  templates: () => request<TemplateInfo[]>("/api/projects/templates"),
+  createProject: (name: string, template: string) =>
     request<Project>("/api/projects", { method: "POST", body: { name, template } }),
   importProject: (file: File, name: string) => {
     const form = new FormData();
@@ -168,6 +173,17 @@ export const api = {
     request<{ results: SearchResult[]; truncated: boolean }>(
       `${P(pid)}/search?q=${enc(q)}&regex=${regex}&case=${caseSensitive}`,
     ),
+
+  review: (pid: string) => request<ReviewReport>(`${P(pid)}/review`),
+  complete: (pid: string, path: string, prefix: string, suffix: string, signal?: AbortSignal) =>
+    request<{ completion: string; model: string; latency_seconds?: number }>(`${P(pid)}/complete`, {
+      method: "POST",
+      body: { path, prefix, suffix },
+      signal,
+    }),
+  searchPapers: (q: string) => request<PaperHit[]>(`/api/references/search?q=${enc(q)}`),
+  importReference: (pid: string, source: "arxiv" | "doi", id: string) =>
+    request<ReferenceImport>(`${P(pid)}/references`, { method: "POST", body: { source, id } }),
 
   // --- builds -----------------------------------------------------------
   compile: (pid: string) => request<Build>(`${P(pid)}/builds`, { method: "POST" }),

@@ -3,7 +3,7 @@ import { EditorView } from "@codemirror/view";
 import { useEffect, useRef } from "react";
 import { buildExtensions, type CompletionData } from "../editor/setup";
 
-const NO_COMPLETION: { current: CompletionData } = { current: { labels: [], bibKeys: [] } };
+const NO_COMPLETION: { current: CompletionData } = { current: { labels: [], bibKeys: [], ai: { pid: "", on: false, report: () => undefined } } };
 
 /** Controlled-ish CodeMirror editor for a standalone text value (conflict resolution). */
 export default function PlainEditor({

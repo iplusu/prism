@@ -242,3 +242,22 @@ def test_unavailable_tool_reported(alice):
     drain()
     t = _get(alice, tid)
     assert t["status"] == "failed" and "unavailable" in t["error"]
+
+
+def test_model_suggested_tool_is_a_preference_not_a_pin(alice, llm):
+    # Auto mode: the model names claude, claude fails, the next tool is still tried.
+    register_override("codex", FakeAdapter("codex", "edit-scope"))
+    register_override("claude", FakeAdapter("claude", "edit-outside"))
+    set_env(AGENT_DEFAULT_ORDER="codex,claude")
+    pid = new_sample_project(alice)["id"]
+    llm.script = [
+        tool("delegate", message="Delegating.", delegation={
+            "goal": "edit method", "executor": "claude", "write_scope": ["sections/method.tex"]}),
+        {"content": "Done."},
+    ]
+    tid = _task(alice, pid, "edit method")
+    drain()
+    t = _get(alice, tid)
+    assert [r["executor"] for r in t["tool_runs"]] == ["claude", "codex"]
+    assert t["tool_runs"][0]["status"] == "rejected"
+    assert t["status"] == "needs_review" and t["executor_used"] == "codex", t["error"]

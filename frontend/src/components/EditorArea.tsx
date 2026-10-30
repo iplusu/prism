@@ -22,6 +22,7 @@ interface Props {
   jump: JumpTarget | null;
   diagnostics: Diagnostic[];
   completion: { current: CompletionData };
+  ai: { on: boolean; error: string | null; toggle: () => void };
   onSelection: (s: SelectionInfo | null) => void;
   onSaveState: (path: string, s: SaveState) => void;
   onSaved: () => void;
@@ -104,6 +105,22 @@ export default function EditorArea(p: Props) {
             </div>
           );
         })}
+        <div className="spacer" />
+        {!p.readOnly && (
+          <button
+            className={`btn btn-sm btn-ghost ai-toggle ${p.ai.on ? "on" : ""} ${p.ai.on && p.ai.error ? "bad" : ""}`}
+            role="switch"
+            aria-checked={p.ai.on}
+            onClick={p.ai.toggle}
+            title={
+              p.ai.on && p.ai.error
+                ? `AI completion failed: ${p.ai.error}`
+                : "AI completion: after a pause at the end of a line, a greyed suggestion appears. Tab accepts, Esc dismisses. Sends the surrounding text to the orchestrator LLM."
+            }
+          >
+            AI complete: {p.ai.on ? (p.ai.error ? "error" : "on") : "off"}
+          </button>
+        )}
       </div>
       <div className="editor-body">{body}</div>
     </div>

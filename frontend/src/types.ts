@@ -124,6 +124,44 @@ export interface Outline {
   bib: { key: string; type: string; file: string; title: string }[];
 }
 
+export interface TemplateInfo {
+  id: string;
+  label: string;
+  description: string;
+  source: string;
+}
+
+export interface PaperHit {
+  source: "arxiv";
+  id: string;
+  url: string;
+  title: string;
+  authors: string[];
+  year: string;
+  summary: string;
+  category: string;
+}
+
+export interface ReferenceImport {
+  key: string;
+  file: string;
+  added: boolean;
+  entry?: string;
+}
+
+export interface ReviewIssue {
+  kind: string;
+  severity: "error" | "warning" | "info";
+  path: string;
+  line: number | null;
+  message: string;
+}
+
+export interface ReviewReport {
+  issues: ReviewIssue[];
+  counts: { error: number; warning: number; info: number };
+}
+
 export interface SearchResult {
   path: string;
   line: number;

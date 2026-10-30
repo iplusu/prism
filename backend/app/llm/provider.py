@@ -56,7 +56,7 @@ class LLMProvider:
 
     def chat(self, messages: list[dict], *, tools: list[dict] | None = None, tool_choice=None,
              response_format: dict | None = None, max_tokens: int | None = None, temperature: float = 0.2,
-             timeout: float | None = None) -> ChatResult:
+             timeout: float | None = None, extra_body: dict | None = None) -> ChatResult:
         raise NotImplementedError
 
     def chat_stream(self, messages: list[dict], *, max_tokens: int | None = None,
@@ -123,7 +123,7 @@ class OpenAICompatibleProvider(LLMProvider):
         return [m for m in items if isinstance(m, dict)]
 
     def chat(self, messages, *, tools=None, tool_choice=None, response_format=None, max_tokens=None,
-             temperature=0.2, timeout=None) -> ChatResult:
+             temperature=0.2, timeout=None, extra_body: dict | None = None) -> ChatResult:
         body: dict = {"model": self.model, "messages": messages, "temperature": temperature,
                       "max_tokens": max_tokens or get_settings().llm_max_output_tokens, "stream": False}
         if tools:
@@ -132,6 +132,8 @@ class OpenAICompatibleProvider(LLMProvider):
                 body["tool_choice"] = tool_choice
         if response_format:
             body["response_format"] = response_format
+        if extra_body:
+            body.update(extra_body)
         t0 = time.monotonic()
         try:
             r = httpx.post(f"{self.base_url}/chat/completions", headers=self._headers(), json=body,

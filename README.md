@@ -3,6 +3,10 @@
 A browser-based paper-writing tool that runs on a lab server. One screen provides:
 
 - LaTeX project and file management (create, ZIP import, upload, rename, delete, search, section outline)
+- Official conference/preprint templates (ACL, CVPR/ICCV, NeurIPS 2025, ICML 2026, arXiv): downloaded from the publishers' own URLs when a project is created, never redistributed by Prism
+- Bibliography: search arXiv and add BibTeX by arXiv id or DOI (entries are taken verbatim from arXiv / doi.org, duplicates detected)
+- AI autocomplete (opt-in, off by default): greyed inline suggestion at the end of a line after a pause, Tab accepts, Esc dismisses; uses the orchestrator LLM, one request per user at a time
+- Manuscript check (no AI): undefined citations/references, duplicate labels and keys, missing figures and inputs, TODO markers, each linked to its line
 - LaTeX/BibTeX editor (CodeMirror 6: syntax highlighting, find/replace, jump to error location, autosave)
 - Preview of the real compiled PDF (TeX Live + latexmk, bubblewrap isolation, rendered with pdf.js)
 - AI chat with the paper as context. An **orchestrator LLM** on a separate inference server (e.g. a5000) analyses each request and, when needed, automatically calls the Codex / Claude Code / Antigravity CLIs
@@ -179,11 +183,14 @@ Implemented and verified (evidence in [docs/verification.md](docs/verification.m
 - Proposal verification (compile + citation/label/number/equation report), conditional apply, 3-way merge followed by re-verification, conflict resolution, partial (hunk) apply followed by re-verification
 - Real-time collaborative editing (two clients editing at once, AI changes propagated, read-only viewers, reconnect, state restored after restart)
 - Saving, comparing and restoring versions, ZIP/PDF export, backup and restore scripts
+- Official templates (all five download, import and compile for real in the sandbox), arXiv search, BibTeX import by arXiv id / DOI (arXiv BibTeX and doi.org checked against the live services), manuscript check, AI autocomplete (real a5000 answers in ~0.6 s with thinking disabled; browser-checked)
 
 Remaining work / not verified:
 
 - **Orchestrator LLM**: connected to the a5000 server (vLLM, Qwen3.8-27B-FP8, served id `qwen38-a5000`). All 7 connection-test steps pass and a real Auto question was answered correctly from the project. The real model also planned and delegated edit tasks to each external tool (below). Not yet run with the real model: an edit proposal written by the LLM itself, and Auto mode choosing among the tools.
-- **External tools**: Codex 0.165.0, Claude Code 2.1.312 and Antigravity (agy) 1.4.10 are installed and signed in in the service tool homes. A real edit task with each tool, inside the bwrap sandbox, produced a verified proposal (candidate build and checks passed). Antigravity needs a CPU with PCLMUL (a generic QEMU CPU model is not enough).
+- **External tools**: Codex 0.165.0 and Claude Code 2.1.312 are signed in separately in the service tool homes; Antigravity (agy) 1.4.10 is installed but **not yet signed in for Prism** (it shows `needs_auth`). A real edit task with each of the three, inside the bwrap sandbox, produced a verified proposal, but the Antigravity run used a copy of a personal login that has since been removed, so it must be repeated after a Prism-specific login. Antigravity needs a CPU with PCLMUL (a generic QEMU CPU model is not enough).
+- **Auto mode with the real LLM**: observed end to end — the model edited directly for a small request, and delegated a file-restructuring request, for which Auto picked Codex (and Claude Code when it was first in the project's order); the verification caught a real problem (Claude Code cannot delete files, so equations ended up duplicated). Planning time varies from under a minute to over ten (shared a5000; `LLM_TIMEOUT_SECONDS=600`), and one run failed on that timeout. **Not observed with real tools: the fallback to the next tool after a failure** (covered by fake-CLI tests only).
+- **arXiv search** parsing is tested against a response with the real structure; a live search was blocked by arXiv rate limiting (HTTP 429) when tested.
 - **Docker Compose**: no Docker on this host, so image builds and startup were not verified.
 - Backup script: the `pg_dump` backup path was run on the production PostgreSQL instance; the `pg_restore` path of `restore.sh` has not been run. The SQLite backup/restore path was verified.
 - The memory cap for tool processes relies on the container (`mem_limit`) (Node-based CLIs are incompatible with `RLIMIT_AS`).

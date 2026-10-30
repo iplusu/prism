@@ -56,10 +56,11 @@ def recent_failures(db: Session, project_id: str) -> dict[str, str]:
 
 
 def select_executor(db: Session, project: Project, *, requested: str, task_kind: str,
-                    exclude: set[str] | None = None) -> tuple[str | None, str, list[dict]]:
-    """Return (executor, reason, considered). `requested` is the user's mode
-    or the model's suggestion; explicit user choice wins but must still be
-    allowed and available."""
+                    exclude: set[str] | None = None, prefer: str | None = None) -> tuple[str | None, str, list[dict]]:
+    """Return (executor, reason, considered). `requested` is the user's mode;
+    an explicit user choice wins but must still be allowed and available.
+    `prefer` (Auto only) is the tool the orchestrator model suggested: it goes
+    first in the order but is otherwise treated like any other candidate."""
     pol = effective_policy(project)
     exclude = exclude or set()
     reg = adapters()
@@ -91,6 +92,8 @@ def select_executor(db: Session, project: Project, *, requested: str, task_kind:
     if s.demo_mode:
         order = ["demo"] + [e for e in order if e != "demo"]
     order += [e for e in REAL_EXECUTORS if e not in order]
+    if prefer in REAL_EXECUTORS:
+        order = [prefer] + [e for e in order if e != prefer]
     deferred = []
     for name in order:
         ok, why = usable(name)
@@ -100,6 +103,8 @@ def select_executor(db: Session, project: Project, *, requested: str, task_kind:
             continue
         considered.append({"executor": name, "usable": ok, "reason": why})
         if ok:
+            if name == prefer:
+                return name, f"auto: suggested by the orchestrator model for '{task_kind}'", considered
             return name, f"auto: first available in policy order for '{task_kind}'", considered
     if deferred:
         return deferred[0], "auto: only tools with a recent failure are available", considered

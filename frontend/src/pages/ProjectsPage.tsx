@@ -5,7 +5,7 @@ import { useApp } from "../appContext";
 import { AppHeader } from "../components/AppHeader";
 import { IconPlus, IconSearch, IconSettings, IconUpload } from "../components/Icons";
 import { Badge, ConfirmButton, Empty, ErrorBox, Loading, Modal, Tag } from "../components/ui";
-import type { Project } from "../types";
+import type { Project, TemplateInfo } from "../types";
 import { fmtTime, relTime, useAction, useAsync } from "../util";
 
 export default function ProjectsPage() {
@@ -188,8 +188,12 @@ export default function ProjectsPage() {
 
 function NewProjectDialog({ onClose, onCreated }: { onClose: () => void; onCreated: (p: Project) => void }) {
   const [name, setName] = useState("");
-  const [template, setTemplate] = useState<"blank" | "sample">("blank");
+  const [template, setTemplate] = useState<string>("blank");
+  const [kits, setKits] = useState<TemplateInfo[]>([]);
   const act = useAction(api.createProject);
+  useEffect(() => {
+    api.templates().then(setKits, () => setKits([])); // the built-in choices still work without the catalogue
+  }, []);
   async function submit(e: FormEvent) {
     e.preventDefault();
     const p = await act.run(name.trim(), template);
@@ -212,6 +216,21 @@ function NewProjectDialog({ onClose, onCreated }: { onClose: () => void; onCreat
             <input type="radio" name="tpl" checked={template === "sample"} onChange={() => setTemplate("sample")} />
             Sample paper <span className="muted small">(sections, figures and bibliography)</span>
           </label>
+          {kits.map((k) => (
+            <label className="radio radio-block" key={k.id}>
+              <input type="radio" name="tpl" checked={template === k.id} onChange={() => setTemplate(k.id)} />
+              <span>
+                {k.label}
+                <span className="muted small radio-desc">{k.description}</span>
+              </span>
+            </label>
+          ))}
+          {kits.some((k) => k.id === template) && (
+            <p className="muted small">
+              The official kit is downloaded from {kits.find((k) => k.id === template)?.source} when the project is created, so this needs
+              internet access from the server and can take a few seconds.
+            </p>
+          )}
         </fieldset>
         <ErrorBox error={act.error} />
         <div className="form-actions">

@@ -49,6 +49,35 @@ def _counter_diff(before: Counter, after: Counter, limit: int = 30) -> dict:
     return {"removed": removed[:limit], "added": added[:limit], "removed_count": len(removed), "added_count": len(added)}
 
 
+def _diff_across_files(pairs: dict[str, tuple[Counter, Counter]], limit: int) -> dict:
+    """Per-file difference of a multiset (equations, numbers) with what merely moved
+    between files cancelled out: splitting or merging files must not count as
+    losing or inventing content. Only items with no counterpart in another
+    changed file (or in the same file's other side) are reported."""
+    per = {p: (before - after, after - before) for p, (before, after) in pairs.items()}
+    removed_all = sum((r for r, _ in per.values()), Counter())
+    added_all = sum((a for _, a in per.values()), Counter())
+    moved = removed_all & added_all
+    quota_removed, quota_added = Counter(moved), Counter(moved)
+    out = {}
+    for p in sorted(per):
+        removed, added = [], []
+        for e in per[p][0].elements():
+            if quota_removed[e] > 0:
+                quota_removed[e] -= 1
+            else:
+                removed.append(e)
+        for e in per[p][1].elements():
+            if quota_added[e] > 0:
+                quota_added[e] -= 1
+            else:
+                added.append(e)
+        if removed or added:
+            out[p] = {"removed": removed[:limit], "added": added[:limit],
+                      "removed_count": len(removed), "added_count": len(added)}
+    return out
+
+
 def analyze(base: dict[str, bytes], cand: dict[str, bytes], changed: list[str]) -> dict:
     bib_b = {e["key"] for e in bib_entries(base)}
     bib_c = {e["key"] for e in bib_entries(cand)}
@@ -59,18 +88,16 @@ def analyze(base: dict[str, bytes], cand: dict[str, bytes], changed: list[str]) 
     undef_cit_b, undef_cit_c = cit_b - bib_b, cit_c - bib_c
     undef_ref_b, undef_ref_c = ref_b - lab_b, ref_c - lab_c
 
-    numbers, equations = {}, {}
+    num_pairs, eq_pairs = {}, {}
     for p in changed:
         if not p.endswith(".tex"):
             continue
         tb = base.get(p, b"").decode("utf-8", errors="replace")
         tc = cand.get(p, b"").decode("utf-8", errors="replace")
-        nd = _counter_diff(_numbers(tb), _numbers(tc))
-        if nd["added_count"] or nd["removed_count"]:
-            numbers[p] = nd
-        ed = _counter_diff(_equations(tb), _equations(tc), limit=10)
-        if ed["added_count"] or ed["removed_count"]:
-            equations[p] = ed
+        num_pairs[p] = (_numbers(tb), _numbers(tc))
+        eq_pairs[p] = (_equations(tb), _equations(tc))
+    numbers = _diff_across_files(num_pairs, 30)
+    equations = _diff_across_files(eq_pairs, 10)
     return {
         "citations": {
             "added": sorted(cit_c - cit_b), "removed": sorted(cit_b - cit_c),

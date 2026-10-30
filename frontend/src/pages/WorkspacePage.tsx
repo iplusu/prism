@@ -159,7 +159,32 @@ export default function WorkspacePage() {
   }, [cache]);
 
   // Completion data for \ref{} and \cite{} (refreshed as the manuscript changes, at most every 15 s).
-  const completion = useRef<CompletionData>({ labels: [], bibKeys: [] });
+  const [aiOn, setAiOn] = useState(() => {
+    try {
+      return localStorage.getItem("prism-ai-complete") === "1";
+    } catch {
+      return false;
+    }
+  });
+  const [aiError, setAiError] = useState<string | null>(null);
+  const completion = useRef<CompletionData>({
+    labels: [],
+    bibKeys: [],
+    ai: { pid, on: aiOn, report: setAiError },
+  });
+  completion.current.ai.pid = pid;
+  completion.current.ai.on = aiOn;
+  const toggleAi = useCallback(() => {
+    setAiOn((v) => {
+      try {
+        localStorage.setItem("prism-ai-complete", v ? "0" : "1");
+      } catch {
+        /* preference just won't persist */
+      }
+      return !v;
+    });
+    setAiError(null);
+  }, []);
   const lastOutline = useRef(0);
   useEffect(() => {
     if (!status?.current_hash || Date.now() - lastOutline.current < 15000) return;
@@ -318,6 +343,7 @@ export default function WorkspacePage() {
       jump={jump}
       diagnostics={diagnostics}
       completion={completion}
+      ai={{ on: aiOn, error: aiError, toggle: toggleAi }}
       onSelection={setSelection}
       onSaveState={onSaveState}
       onSaved={onSaved}
