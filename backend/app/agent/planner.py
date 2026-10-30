@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from pydantic import ValidationError
 
 from ..config import get_settings
+from ..config import get_settings
 from ..llm.diagnostics import load_capabilities, run_connection_test
 from ..llm.provider import LLMError, LLMProvider
 from .contract import EXECUTORS, Plan, PLAN_JSON_SCHEMA
@@ -124,13 +125,20 @@ def _fmt(e: ValidationError) -> str:
     return "; ".join(f"{'.'.join(str(x) for x in err['loc'])}: {err['msg']}" for err in e.errors()[:8])
 
 
+ANALYSIS_MIN_TOKENS = 12000
+MAX_GROWN_TOKENS = 16384
+
+
 def plan(provider: LLMProvider, *, request: str, context: str, forced_executor: str | None = None,
-         allow_delegate: bool = True, validate_edits=None) -> PlanOutcome:
+         allow_delegate: bool = True, validate_edits=None, answer_only: bool = False) -> PlanOutcome:
     mode = planning_mode()
     sys = SYSTEM
     if forced_executor:
         sys += f"\n\nThe user asked for this to be done by the external tool '{forced_executor}': use action \"delegate\"."
-    if not allow_delegate:
+    if answer_only:
+        sys += ("\n\nThis is an analysis request: use action \"answer\" ONLY. Never edit files, never delegate. "
+                "Quote file and line for every point you make, and do not invent citations or facts about the paper.")
+    elif not allow_delegate:
         sys += "\n\nDelegation is not available for this request: use \"answer\" or \"edit\" only."
     if mode != "tools":
         sys += ("\n\nRespond with ONLY a JSON object matching this JSON Schema (no prose, no code fences):\n"
@@ -139,7 +147,8 @@ def plan(provider: LLMProvider, *, request: str, context: str, forced_executor: 
                 {"role": "user", "content": f"# Project context\n{context}\n\n# Request\n{request}"}]
     kwargs: dict = {}
     if mode == "tools":
-        tools = [t for t in _TOOLS if allow_delegate or t["function"]["name"] != "delegate"]
+        tools = [t for t in _TOOLS if (not answer_only or t["function"]["name"] == "answer")
+                 and (allow_delegate or t["function"]["name"] != "delegate")]
         kwargs = {"tools": tools, "tool_choice": "auto"}
     elif mode == "json":
         caps = (load_capabilities() or {}).get("capabilities", {})
@@ -149,13 +158,29 @@ def plan(provider: LLMProvider, *, request: str, context: str, forced_executor: 
             kwargs = {"response_format": {"type": "json_object"}}
     last_err = ""
     raw = ""
-    for attempt in range(2):
+    # Reasoning models spend hidden tokens before answering. An analysis (whole-project review) can use
+    # more than the default budget, so it starts bigger; any request that comes back EMPTY because the
+    # budget ran out is retried once with a larger one instead of being reported as invalid JSON.
+    max_tokens = get_settings().llm_max_output_tokens
+    if answer_only:
+        max_tokens = max(max_tokens, ANALYSIS_MIN_TOKENS)
+    grew = False
+    attempt = 0
+    while attempt < 2:
         try:
-            res = provider.chat(messages, temperature=0.1, **kwargs)
+            res = provider.chat(messages, temperature=0.1, max_tokens=max_tokens, **kwargs)
         except LLMError:
             raise
+        if res.finish_reason == "length" and not res.content.strip() and not res.tool_calls:
+            if not grew and max_tokens < MAX_GROWN_TOKENS:
+                max_tokens, grew = min(max_tokens * 3, MAX_GROWN_TOKENS), True
+                continue  # same request, bigger budget; does not use up the repair attempt
+            raise PlanError(f"the model used its whole output budget ({max_tokens} tokens, finish_reason=length) on hidden "
+                            "reasoning and produced no answer; raise LLM_MAX_OUTPUT_TOKENS or use a shorter request", "")
         try:
             p, raw = _parse(mode, res.content, res.tool_calls)
+            if answer_only and p.action != "answer":
+                raise PlanError("this is an analysis request: the action must be \"answer\"", raw)
             if p.action == "delegate" and not allow_delegate:
                 raise PlanError("delegation is not allowed for this request", raw)
             if p.action == "delegate" and p.delegation is None:
@@ -170,6 +195,7 @@ def plan(provider: LLMProvider, *, request: str, context: str, forced_executor: 
                 raise PlanError("invalid executor", raw)
             return PlanOutcome(plan=p, mode=mode, raw=raw, repaired=attempt > 0)
         except PlanError as e:
+            attempt += 1
             last_err = str(e)
             raw = e.raw or res.content
             messages.append({"role": "assistant", "content": (res.content or raw)[:6000]})

@@ -261,3 +261,57 @@ def test_model_suggested_tool_is_a_preference_not_a_pin(alice, llm):
     assert [r["executor"] for r in t["tool_runs"]] == ["claude", "codex"]
     assert t["tool_runs"][0]["status"] == "rejected"
     assert t["status"] == "needs_review" and t["executor_used"] == "codex", t["error"]
+
+
+def test_answer_only_presets_can_never_edit_or_delegate(alice, llm):
+    """Analysis presets (reviewer report, terminology, missing citations) are forced to answer: the tool list the
+    model sees has only `answer`, and a plan that tries to edit anyway is rejected, not applied."""
+    pid = new_sample_project(alice)["id"]
+    before = read_text(alice, pid, "sections/conclusion.tex")["text"]
+    llm.script = [tool("answer", message="Weakness: no ablation (sections/results.tex).")]
+    tid = _task(alice, pid, "Review this manuscript.", mode="codex", scope="project", answer_only=True)  # a pinned tool is ignored
+    drain()
+    t = _get(alice, tid)
+    assert t["status"] == "completed" and not t["proposal_id"] and not t.get("tool_runs")
+    names = [x["function"]["name"] for x in llm.requests[0]["tools"]]
+    assert names == ["answer"]
+    assert "ONLY" in json.dumps(llm.requests[0]["messages"][0])
+
+    # a model that ignores the instruction and proposes an edit: rejected twice -> task fails, file untouched
+    llm.requests.clear()
+    llm.script = [tool("edit", message="x", summary="s", edits=[{"path": "sections/conclusion.tex", "find": "is future work.", "replace": "CHANGED"}]),
+                  tool("edit", message="x", summary="s", edits=[{"path": "sections/conclusion.tex", "find": "is future work.", "replace": "CHANGED"}])]
+    tid = _task(alice, pid, "Review this manuscript.", mode="auto", scope="project", answer_only=True)
+    drain()
+    t = _get(alice, tid)
+    assert t["status"] == "failed" and "analysis request" in t["error"] and not t["proposal_id"]
+    assert read_text(alice, pid, "sections/conclusion.tex")["text"] == before
+
+
+def test_reasoning_model_running_out_of_budget_is_retried_bigger_then_reported_honestly(alice, llm):
+    """A reasoning model can spend the whole output budget on hidden thinking and return nothing (finish_reason=length).
+    That is retried once with a larger budget; if it still fails the error names the real cause, not 'invalid JSON'."""
+    pid = new_sample_project(alice)["id"]
+    llm.script = [{"content": "", "finish_reason": "length"}, tool("answer", message="Fine after a bigger budget.")]
+    tid = _task(alice, pid, "How many sections?")
+    drain()
+    t = _get(alice, tid)
+    assert t["status"] == "completed", t
+    budgets = [r["max_tokens"] for r in llm.requests]
+    assert budgets[1] == min(budgets[0] * 3, 16384) and budgets[1] > budgets[0]
+
+    llm.requests.clear()
+    llm.script = [{"content": "", "finish_reason": "length"}, {"content": "", "finish_reason": "length"}]
+    tid = _task(alice, pid, "How many sections?")
+    drain()
+    t = _get(alice, tid)
+    assert t["status"] == "failed" and "output budget" in t["error"] and "hidden reasoning" in t["error"], t["error"]
+    assert "Invalid JSON" not in t["error"]
+
+
+def test_analysis_requests_start_with_a_large_budget(alice, llm):
+    pid = new_sample_project(alice)["id"]
+    llm.script = [tool("answer", message="ok")]
+    _task(alice, pid, "Review this manuscript.", scope="project", answer_only=True)
+    drain()
+    assert llm.requests[0]["max_tokens"] >= 12000

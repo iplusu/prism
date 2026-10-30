@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from .. import bibverify
 from .. import references as refs
 from ..agent.context import bib_entries
 from ..db import get_db
@@ -65,3 +66,11 @@ def import_reference(pid: str, body: ImportIn, user: User = Depends(current_user
     p.updated_at = now()
     db.commit()
     return {"key": key, "file": target, "added": True, "entry": bib}
+
+
+@router.post("/api/projects/{pid}/references/verify")
+def verify_references(pid: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Look every bibliography entry up in public databases (DOI, arXiv, Crossref/OpenAlex by title)."""
+    get_project_for(db, pid, user, "editor")
+    entries = bibverify.parse_entries(_live(pid))
+    return bibverify.verify(entries)

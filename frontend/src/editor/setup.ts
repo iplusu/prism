@@ -10,7 +10,7 @@ import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirro
 import { bracketMatching, indentOnInput, syntaxHighlighting } from "@codemirror/language";
 import { lintGutter, lintKeymap, setDiagnostics, type Diagnostic as CmDiagnostic } from "@codemirror/lint";
 import { highlightSelectionMatches, search, searchKeymap } from "@codemirror/search";
-import { EditorState, type Extension, type Text } from "@codemirror/state";
+import { EditorState, Prec, type Extension, type Text } from "@codemirror/state";
 import {
   crosshairCursor,
   drawSelection,
@@ -33,6 +33,10 @@ export interface CompletionData {
   labels: string[];
   bibKeys: { key: string; title: string }[];
   ai: AiCompleteState;
+  /** Line of the caret in the focused editor, for "show in PDF". */
+  cursor: { path: string; line: number } | null;
+  /** Show a source line in the PDF (set by the workspace). */
+  sync: (path: string, line: number) => void;
 }
 
 function latexCompletions(data: { current: CompletionData }) {
@@ -86,8 +90,29 @@ export interface ExtensionOptions {
   onUpdate?: Extension;
 }
 
+function syncExtension(data: { current: CompletionData }, path: string): Extension {
+  const lineOf = (st: EditorState) => st.doc.lineAt(st.selection.main.head).number;
+  return [
+    EditorView.updateListener.of((u) => {
+      if (u.selectionSet || u.docChanged || u.focusChanged) data.current.cursor = { path, line: lineOf(u.state) };
+    }),
+    Prec.high(
+      keymap.of([
+        {
+          key: "Mod-Alt-j",
+          run: (view) => {
+            data.current.sync(path, lineOf(view.state));
+            return true;
+          },
+        },
+      ]),
+    ),
+  ];
+}
+
 export function buildExtensions(o: ExtensionOptions): Extension[] {
   return [
+    syncExtension(o.completion, o.path),
     lineNumbers(),
     highlightActiveLineGutter(),
     highlightSpecialChars(),

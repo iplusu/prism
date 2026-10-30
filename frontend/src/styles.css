@@ -2210,3 +2210,46 @@ td.row-actions {
 .auto-compile.on {
   color: var(--accent);
 }
+
+.pdf-page {
+  position: relative;
+}
+.pdf-mark {
+  position: absolute;
+  pointer-events: none;
+  border: 2px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  border-radius: 3px;
+  animation: pdf-mark-fade 3.5s ease-out forwards;
+}
+@keyframes pdf-mark-fade {
+  0%, 60% { opacity: 1; }
+  100% { opacity: 0; }
+}
+.pdf-notice.floating.sync-notice {
+  pointer-events: auto;
+  max-width: 70%;
+}
+
+.verify-bib {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.bib-verified { color: var(--ok, #1a7f37); }
+.bib-mismatch, .bib-not_found { color: var(--danger); }
+.bib-unchecked { color: var(--fg-muted); }
+
+.zotero-import {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.zotero-import > summary {
+  cursor: pointer;
+}
+
+.presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 6px;
+}

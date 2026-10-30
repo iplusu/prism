@@ -9,14 +9,24 @@ const LABEL: Record<string, string> = { error: "Errors", warning: "Warnings", in
 // Deterministic manuscript checks (citations, references, labels, figures,
 // inputs, TODOs). No AI involved; every item links to its file and line.
 export default function CheckPanel({ pid, onJump }: { pid: string; onJump: (path: string, line: number) => void }) {
-  const [rep, setRep] = useState<ReviewReport | null>(null);
+  const [mode, setMode] = useState<"manuscript" | "arxiv">("manuscript");
+  const [reports, setReports] = useState<Partial<Record<"manuscript" | "arxiv", ReviewReport>>>({});
+  const rep = reports[mode] ?? null;
   const [showInfo, setShowInfo] = useState(false);
-  const act = useAction(async () => setRep(await api.review(pid)));
+  const act = useAction(async () => {
+    const r = mode === "arxiv" ? await api.arxivCheck(pid) : await api.review(pid);
+    setReports((x) => ({ ...x, [mode]: r }));
+  });
   const shown = rep?.issues.filter((i) => showInfo || i.severity !== "info") ?? [];
   return (
     <div className="side-panel">
       <div className="side-head">
-        <span className="side-title">Manuscript check</span>
+        <span className="side-title">
+          <select aria-label="Kind of check" value={mode} onChange={(e) => setMode(e.target.value as "manuscript" | "arxiv")}>
+            <option value="manuscript">Manuscript check</option>
+            <option value="arxiv">arXiv preflight</option>
+          </select>
+        </span>
         <div className="spacer" />
         <button className="btn btn-sm" onClick={() => void act.run()} disabled={act.busy}>
           {act.busy ? <Spinner /> : rep ? "Re-run" : "Run checks"}
@@ -25,8 +35,9 @@ export default function CheckPanel({ pid, onJump }: { pid: string; onJump: (path
       <ErrorBox error={act.error} />
       {!rep && !act.busy && (
         <p className="muted small side-note">
-          Finds undefined citations and references, duplicate labels or keys, missing figure and input files, and TODO
-          markers. Runs on the live text; no AI involved.
+          {mode === "arxiv"
+            ? "Checks the documented reasons arXiv rejects or breaks a LaTeX submission: absolute or odd file names, EPS figures with pdfLaTeX, \\include in subfolders, missing or misnamed .bbl, unsupported engines. Rules come from arXiv's help pages; passing does not guarantee acceptance."
+            : "Finds undefined citations and references, duplicate labels or keys, missing figure and input files, and TODO markers. Runs on the live text; no AI involved."}
         </p>
       )}
       {rep && (

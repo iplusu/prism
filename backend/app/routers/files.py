@@ -8,8 +8,9 @@ from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from .. import review
+from .. import arxiv, review
 from ..agent.context import bib_entries, labels, outline
+from ..compile.latex import tex_status
 from ..config import get_settings
 from ..db import get_db
 from ..deps import current_user, get_project_for
@@ -206,3 +207,10 @@ def search(pid: str, q: str, regex: bool = False, case: bool = False, user: User
 def review_manuscript(pid: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
     p, _ = get_project_for(db, pid, user, "viewer")
     return review.check(_live(pid), p.main_file)
+
+
+@router.get("/arxiv-check")
+def arxiv_check(pid: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Documented arXiv submission pitfalls in the live text (see app/arxiv.py for the sources)."""
+    p, _ = get_project_for(db, pid, user, "viewer")
+    return arxiv.check(_live(pid), p.main_file, p.engine, tex_status().get("detail", ""))

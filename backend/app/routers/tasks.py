@@ -29,6 +29,7 @@ class ContextIn(BaseModel):
     scope: Literal["selection", "file", "project"] = "project"
     path: str | None = None
     selection: Selection | None = None
+    answer_only: bool = False  # analysis presets: the task may only answer, never edit or delegate
 
 
 class TaskIn(BaseModel):

@@ -76,7 +76,7 @@ class FakeLLM:
                                           "function": {"name": tc["name"], "arguments": tc["arguments"]}}
                                          for i, tc in enumerate(reply["tool_calls"])]
                 self._send(200, {"id": "x", "model": fake.model, "choices": [{"index": 0, "message": msg,
-                                 "finish_reason": "tool_calls" if reply.get("tool_calls") else "stop"}], "usage": {}})
+                                 "finish_reason": reply.get("finish_reason") or ("tool_calls" if reply.get("tool_calls") else "stop")}], "usage": {}})
 
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), H)
         self.url = f"http://127.0.0.1:{self.server.server_address[1]}/v1"

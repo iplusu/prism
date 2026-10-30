@@ -109,7 +109,7 @@ def compile_project(files: dict[str, bytes], build_dir: Path, main_file: str, en
     out.mkdir()
 
     bin_dir = ts["bin_dir"]
-    eng_cmd = f"{engine} -no-shell-escape -file-line-error -interaction=nonstopmode -halt-on-error %O %S"
+    eng_cmd = f"{engine} -no-shell-escape -file-line-error -interaction=nonstopmode -halt-on-error -synctex=1 %O %S"
     argv = [
         os.path.join(bin_dir, "latexmk"), "-norc", ENGINES[engine], f"-{engine}={eng_cmd}" if engine != "pdflatex" else f"-pdflatex={eng_cmd}",
         "-interaction=nonstopmode", "-halt-on-error", "-file-line-error", "-outdir=_prism_out",
@@ -172,6 +172,11 @@ def compile_project(files: dict[str, bytes], build_dir: Path, main_file: str, en
     if ok:
         final = build_dir / "output.pdf"
         shutil.copyfile(pdf, final)
+        # kept next to the PDF: SyncTeX maps source <-> PDF, the .bbl is what arXiv needs for the bibliography
+        for ext in ("synctex.gz", "bbl"):
+            extra = out / f"{stem}.{ext}"
+            if extra.exists():
+                shutil.copyfile(extra, build_dir / f"output.{ext}")
         return CompileResult(status="succeeded", isolation=isolation, exit_code=code, log=full_log,
                              diagnostics=diags, pdf_path=final, duration=dur)
     err = next((d["message"] for d in diags if d["severity"] == "error"), "") or f"latexmk exited with code {code}"

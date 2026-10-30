@@ -1,5 +1,5 @@
 import { api } from "../api";
-import type { Build, ProjectStatus } from "../types";
+import type { Build, PdfMark, ProjectStatus } from "../types";
 import { fmtDuration, fmtTime, relTime, shortRev } from "../util";
 import PdfViewer from "./PdfViewer";
 import { Empty, Spinner, Tag } from "./ui";
@@ -17,11 +17,17 @@ export default function PdfPanel({
   projectName,
   onShowLog,
   canCompile,
+  mark,
+  onSourceClick,
+  notice,
 }: {
   status: ProjectStatus | undefined;
   projectName: string;
   onShowLog: () => void;
   canCompile: boolean;
+  mark?: PdfMark | null;
+  onSourceClick?: (page: number, x: number, y: number) => void;
+  notice?: string | null;
 }) {
   if (!status) {
     return (
@@ -99,7 +105,12 @@ export default function PdfPanel({
   return (
     <div className="pdf-panel">
       {notices}
-      <PdfViewer url={api.buildPdfUrl(ok.id)} downloadName={`${projectName || "paper"}.pdf`} header={header} />
+      {notice && (
+        <div className="pdf-notice info floating sync-notice" role="status">
+          {notice}
+        </div>
+      )}
+      <PdfViewer url={api.buildPdfUrl(ok.id)} downloadName={`${projectName || "paper"}.pdf`} header={header} mark={mark} onSourceClick={onSourceClick} />
     </div>
   );
 }

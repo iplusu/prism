@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from .. import arxiv
 from ..agent.policy import REAL_EXECUTORS, effective_policy
 from ..builds import build_json, pdf_path
 from ..config import REPO_ROOT, get_settings
@@ -347,6 +348,26 @@ def export_zip(pid: str, user: User = Depends(current_user), db: Session = Depen
     fname = re.sub(r"[^A-Za-z0-9_.-]+", "_", p.name)[:80] or "project"
     return StreamingResponse(buf, media_type="application/zip",
                              headers={"Content-Disposition": f'attachment; filename="{fname}.zip"'})
+
+
+@router.get("/{pid}/export-arxiv.zip")
+def export_arxiv(pid: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Sources for an arXiv upload: no hidden/aux files, with the .bbl of the last compile when the paper uses BibTeX/biblatex."""
+    p, _ = get_project_for(db, pid, user)
+    files = documents.live_files(pid)
+    bbl = None
+    if arxiv.needs_bbl(files, p.main_file):
+        b = db.get(Build, p.last_success_build_id) if p.last_success_build_id else None
+        if b is None or b.source_hash != store.tree_hash(files):
+            raise HTTPException(409, "Compile the paper first: arXiv needs the .bbl of a build that matches the current text.")
+        bp = pdf_path(b.id).with_name("output.bbl")
+        if not bp.exists():
+            raise HTTPException(409, "The last build kept no .bbl (it predates this feature): compile again, then export.")
+        bbl = bp.read_bytes()
+    data = arxiv.source_zip(files, p.main_file, bbl)
+    fname = re.sub(r"[^A-Za-z0-9_.-]+", "_", p.name)[:80] or "project"
+    return StreamingResponse(io.BytesIO(data), media_type="application/zip",
+                             headers={"Content-Disposition": f'attachment; filename="{fname}-arxiv.zip"'})
 
 
 @router.get("/{pid}/export.pdf")

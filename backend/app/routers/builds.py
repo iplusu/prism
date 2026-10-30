@@ -5,10 +5,12 @@ from fastapi.responses import FileResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from .. import synctex
 from ..builds import build_json, pdf_path, request_build
 from ..db import get_db
 from ..deps import current_user, get_project_for
 from ..models import Build, User
+from ..projects import store
 from ..projects.documents import CollabUnavailable
 
 router = APIRouter(prefix="/api", tags=["builds"])
@@ -56,3 +58,27 @@ def build_pdf(bid: str, user: User = Depends(current_user), db: Session = Depend
         raise HTTPException(404, "this build has no PDF")
     return FileResponse(pdf_path(b.id), media_type="application/pdf",
                         headers={"Cache-Control": "private, max-age=31536000, immutable"})
+
+
+def _sync(fn, *a):
+    try:
+        return fn(*a)
+    except synctex.SyncTexError as e:
+        raise HTTPException(e.status, str(e)) from e
+
+
+@router.get("/builds/{bid}/synctex/forward")
+def synctex_forward(bid: str, file: str, line: int, col: int = 1, user: User = Depends(current_user),
+                    db: Session = Depends(get_db)):
+    """Where a source line appears in this build's PDF (PDF points, origin top-left)."""
+    b = _build_for(db, bid, user)
+    return {"build_id": b.id, "boxes": _sync(synctex.forward, b.id, file, line, col)}
+
+
+@router.get("/builds/{bid}/synctex/inverse")
+def synctex_inverse(bid: str, page: int, x: float, y: float, user: User = Depends(current_user),
+                    db: Session = Depends(get_db)):
+    """Source file and line at a PDF position of this build (null when it is not a project file)."""
+    b = _build_for(db, bid, user)
+    names = {n for n in store.git(b.project_id, "ls-tree", "-r", "-z", "--name-only", b.revision).decode().split("\0") if n}
+    return {"build_id": b.id, "source": _sync(synctex.inverse, b.id, page, x, y, names)}

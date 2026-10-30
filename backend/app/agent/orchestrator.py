@@ -109,7 +109,8 @@ class Runner:
         t = self.task
         s = self.settings
         mode = t.mode
-        explicit_tool = mode in EXECUTORS or mode == "demo"
+        answer_only = bool((t.context_spec or {}).get("answer_only"))  # analysis presets: the server forbids edits
+        explicit_tool = (mode in EXECUTORS or mode == "demo") and not answer_only
         llm_ok = s.llm_configured
         if not llm_ok and not explicit_tool and not s.demo_mode:
             raise RuntimeError("the orchestrator LLM is not configured (set LLM_BASE_URL and LLM_MODEL), "
@@ -120,8 +121,8 @@ class Runner:
             try:
                 outcome = planner.plan(provider, request=t.request, context=context,
                                        forced_executor=mode if explicit_tool else None,
-                                       allow_delegate=mode != "llm" and self.policy["allow_external"],
-                                       validate_edits=self._validate_edits)
+                                       allow_delegate=mode != "llm" and self.policy["allow_external"] and not answer_only,
+                                       validate_edits=self._validate_edits, answer_only=answer_only)
             except LLMError as e:
                 if explicit_tool:
                     self.emit("llm", f"orchestrator unavailable ({e.kind}); using a server-built contract")

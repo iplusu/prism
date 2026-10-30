@@ -185,6 +185,8 @@ export interface TaskContextSpec {
   scope: "selection" | "file" | "project";
   path?: string | null;
   selection?: { from_line: number; to_line: number; text: string } | null;
+  /** Analysis request: the server lets it answer only, never edit or delegate. */
+  answer_only?: boolean;
 }
 
 export interface Task {
@@ -449,4 +451,57 @@ export interface SystemStatus {
     compile_memory_mb: number;
   };
   agent_default_order: string;
+}
+
+/** A rectangle on a PDF page in PDF points, origin at the page's top-left. */
+export interface PdfMark {
+  page: number;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  nonce: number;
+}
+export interface SyncSource {
+  path: string;
+  line: number;
+  column: number;
+}
+
+export type BibStatus = "verified" | "mismatch" | "not_found" | "unchecked";
+export interface BibCheck {
+  key: string;
+  file: string;
+  line: number | null;
+  status: BibStatus;
+  detail: string;
+  found_title: string;
+  found_id: string;
+  source: string;
+}
+export interface BibVerifyReport {
+  results: BibCheck[];
+  counts: Record<BibStatus, number>;
+  total: number;
+  checked: number;
+  truncated: boolean;
+}
+
+export interface ZoteroLibrary {
+  id: string;
+  name: string;
+}
+export interface ZoteroCollection {
+  key: string;
+  name: string;
+  parent: string | null;
+  items: number;
+}
+export interface ZoteroResult {
+  file: string;
+  total_in_zotero: number;
+  added: number;
+  skipped_existing: number;
+  renamed: [string, string][];
+  truncated: boolean;
 }

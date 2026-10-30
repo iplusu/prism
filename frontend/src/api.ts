@@ -3,6 +3,7 @@
 import type {
   AgentPolicy,
   AuthConfig,
+  BibVerifyReport,
   Build,
   ChatMessage,
   CollabToken,
@@ -11,6 +12,7 @@ import type {
   LlmTestReport,
   Outline,
   PaperHit,
+  PdfMark,
   Project,
   ProjectStatus,
   Proposal,
@@ -19,6 +21,7 @@ import type {
   ReviewReport,
   Role,
   SearchResult,
+  SyncSource,
   SystemStatus,
   Task,
   TaskContextSpec,
@@ -28,6 +31,9 @@ import type {
   ToolHealth,
   User,
   Version,
+  ZoteroCollection,
+  ZoteroLibrary,
+  ZoteroResult,
   VersionDiff,
 } from "./types";
 
@@ -148,6 +154,8 @@ export const api = {
   status: (pid: string) => request<ProjectStatus>(`${P(pid)}/status`),
   collabToken: (pid: string) => request<CollabToken>(`${P(pid)}/collab-token`),
   exportZipUrl: (pid: string) => `${P(pid)}/export.zip`,
+  exportArxivUrl: (pid: string) => `${P(pid)}/export-arxiv.zip`,
+  arxivCheck: (pid: string) => request<ReviewReport>(`${P(pid)}/arxiv-check`),
   exportPdfUrl: (pid: string) => `${P(pid)}/export.pdf`,
 
   // --- files ------------------------------------------------------------
@@ -182,6 +190,16 @@ export const api = {
       body: { path, prefix, suffix, model },
       signal,
     }),
+  synctexForward: (bid: string, file: string, line: number) =>
+    request<{ build_id: string; boxes: Omit<PdfMark, "nonce">[] }>(`/api/builds/${enc(bid)}/synctex/forward?file=${enc(file)}&line=${line}`),
+  synctexInverse: (bid: string, page: number, x: number, y: number) =>
+    request<{ build_id: string; source: SyncSource | null }>(`/api/builds/${enc(bid)}/synctex/inverse?page=${page}&x=${x.toFixed(2)}&y=${y.toFixed(2)}`),
+  verifyReferences: (pid: string) => request<BibVerifyReport>(`${P(pid)}/references/verify`, { method: "POST" }),
+  zoteroLibraries: (apiKey: string) => request<ZoteroLibrary[]>("/api/zotero/libraries", { method: "POST", body: { api_key: apiKey } }),
+  zoteroCollections: (library: string, apiKey: string | null) =>
+    request<ZoteroCollection[]>("/api/zotero/collections", { method: "POST", body: { library, api_key: apiKey } }),
+  zoteroImport: (pid: string, library: string, apiKey: string | null, collection: string | null) =>
+    request<ZoteroResult>(`${P(pid)}/zotero/import`, { method: "POST", body: { library, api_key: apiKey, collection } }),
   searchPapers: (q: string) => request<PaperHit[]>(`/api/references/search?q=${enc(q)}`),
   importReference: (pid: string, source: "arxiv" | "doi", id: string) =>
     request<ReferenceImport>(`${P(pid)}/references`, { method: "POST", body: { source, id } }),

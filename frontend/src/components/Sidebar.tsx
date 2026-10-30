@@ -72,7 +72,7 @@ export default function Sidebar(p: Props) {
         )}
         {p.tab === "outline" && <OutlinePanel pid={p.pid} refreshKey={p.outlineKey} onJump={p.onJump} />}
         {p.tab === "search" && <SearchPanel pid={p.pid} onJump={p.onJump} />}
-        {p.tab === "refs" && <ReferencesPanel pid={p.pid} canEdit={p.canEdit} onImported={p.onFilesChanged} />}
+        {p.tab === "refs" && <ReferencesPanel pid={p.pid} canEdit={p.canEdit} onImported={p.onFilesChanged} onJump={p.onJump} />}
         {p.tab === "check" && <CheckPanel pid={p.pid} onJump={p.onJump} />}
         {p.tab === "history" && <HistoryPanel pid={p.pid} canEdit={p.canEdit} />}
       </div>

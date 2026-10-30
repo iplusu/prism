@@ -35,6 +35,7 @@ interface Props {
   compiling: boolean;
   compileError: string | null;
   onCompile: () => void;
+  onExportError: (m: string) => void;
   autoCompile: boolean;
   onToggleAutoCompile: () => void;
   members: Member[];
@@ -68,6 +69,24 @@ export function saveIndicatorFor(
   if (s?.kind === "dirty") return { tone: "info", text: "Unsaved changes…" };
   if (s?.kind === "saved") return { tone: "ok", text: "All changes saved" };
   return { tone: "muted", text: "Autosave on" };
+}
+
+async function downloadArxiv(pid: string, onError: (m: string) => void) {
+  try {
+    const r = await fetch(api.exportArxivUrl(pid), { credentials: "same-origin" });
+    if (!r.ok) {
+      const d = await r.json().catch(() => null);
+      onError(typeof d?.detail === "string" ? d.detail : `export failed (HTTP ${r.status})`);
+      return;
+    }
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(await r.blob());
+    a.download = /filename="([^"]+)"/.exec(r.headers.get("content-disposition") ?? "")?.[1] ?? "arxiv.zip";
+    a.click();
+    URL.revokeObjectURL(a.href);
+  } catch {
+    onError("export failed (network error)");
+  }
 }
 
 export default function WorkspaceHeader(p: Props) {
@@ -148,6 +167,16 @@ export default function WorkspaceHeader(p: Props) {
             <a className="menu-item" href={api.exportZipUrl(pid)} download onClick={close}>
               Source files (.zip)
             </a>
+            <button
+              className="menu-item"
+              title="Sources without aux/hidden files, plus the .bbl of your last compile (arXiv needs it)"
+              onClick={() => {
+                close();
+                void downloadArxiv(pid, p.onExportError);
+              }}
+            >
+              arXiv source (.zip)
+            </button>
             {hasPdf ? (
               <a className="menu-item" href={api.exportPdfUrl(pid)} download onClick={close}>
                 Last successful PDF

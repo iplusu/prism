@@ -22,6 +22,31 @@ interface Props {
   onTaskChange: () => void;
 }
 
+// Analysis presets. They run with answer_only: the server never lets them edit files or call a tool.
+const PRESETS: { id: string; label: string; title: string; prompt: string }[] = [
+  {
+    id: "review",
+    label: "Reviewer report",
+    title: "A critical but fair peer-review of the manuscript. Answers only; changes nothing.",
+    prompt:
+      "Review this manuscript as a critical but fair peer reviewer. Give: a two-sentence summary of the claimed contribution; the main strengths; the main weaknesses, each tied to a file and line; questions for the authors; and presentation problems (unclear definitions, notation, figures). Use only what is in the project text. Do not invent related work or citations. Do not change any file. Reply in the language of the manuscript.",
+  },
+  {
+    id: "terms",
+    label: "Terminology",
+    title: "Finds names, spellings and symbols used inconsistently. Answers only; changes nothing.",
+    prompt:
+      "Find terminology and notation that is used inconsistently across the project: different names or spellings for the same concept, one symbol used for two things, hyphenation or capitalization variants. For each case list the variants with file and line, and recommend one canonical form. Do not change any file. Reply in the language of the manuscript.",
+  },
+  {
+    id: "cites",
+    label: "Missing citations",
+    title: "Finds claims that need a citation. Never invents references. Answers only; changes nothing.",
+    prompt:
+      "Find statements that present prior work, established facts or comparisons without a \\cite, or that cite a key missing from the bibliography. Quote each sentence with file and line, say why a citation is needed, and suggest search keywords. Do NOT invent references, authors, titles or DOIs. Do not change any file. Reply in the language of the manuscript.",
+  },
+];
+
 const MODES: TaskMode[] = ["auto", "llm", "codex", "claude", "antigravity"];
 
 export default function AiPanel(p: Props) {
@@ -81,6 +106,12 @@ export default function AiPanel(p: Props) {
     refreshAll();
   });
 
+  const preset = useAction(async (prompt: string) => {
+    const t = await api.createTask(p.pid, prompt, "llm", { scope: "project", answer_only: true });
+    tasks.setData([t, ...(tasks.data ?? [])]);
+    refreshAll();
+  });
+
   function submit(e?: FormEvent) {
     e?.preventDefault();
     if (text.trim() && !send.busy) void send.run();
@@ -121,6 +152,14 @@ export default function AiPanel(p: Props) {
       </div>
       {p.canEdit ? (
         <form className="ai-input" onSubmit={submit}>
+          <div className="presets" role="group" aria-label="Analysis presets (answer only, nothing is changed)">
+            {PRESETS.map((x) => (
+              <button type="button" key={x.id} className="btn btn-sm" title={x.title} disabled={send.busy || preset.busy} onClick={() => void preset.run(x.prompt)}>
+                {x.label}
+              </button>
+            ))}
+          </div>
+          <ErrorBox error={preset.error} />
           <fieldset className="ctx-select">
             <legend className="sr-only">Context</legend>
             <span className="tiny muted">Context</span>

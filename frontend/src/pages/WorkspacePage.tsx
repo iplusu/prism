@@ -13,7 +13,7 @@ import Sidebar, { type SideTab } from "../components/Sidebar";
 import { ErrorBox, Loading, Tabs } from "../components/ui";
 import WorkspaceHeader, { saveIndicatorFor, type PanelToggles } from "../components/WorkspaceHeader";
 import type { CompletionData } from "../editor/setup";
-import type { Build, ProjectStatus } from "../types";
+import type { Build, PdfMark, ProjectStatus } from "../types";
 import { useAsync, useInterval, useMediaQuery } from "../util";
 
 type NarrowTab = "files" | "editor" | "pdf" | "ai";
@@ -199,6 +199,8 @@ export default function WorkspacePage() {
     labels: [],
     bibKeys: [],
     ai: { pid, on: aiOn, model: aiModel, report: setAiError },
+    cursor: null,
+    sync: () => undefined,
   });
   completion.current.ai.pid = pid;
   completion.current.ai.on = aiOn;
@@ -260,6 +262,49 @@ export default function WorkspacePage() {
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
   }, [compile]);
+  // ------------------------------------------------------- SyncTeX ---
+  const [pdfMark, setPdfMark] = useState<PdfMark | null>(null);
+  const [syncNote, setSyncNote] = useState<string | null>(null);
+  const noteTimer = useRef<number | undefined>(undefined);
+  const note = useCallback((m: string) => {
+    setSyncNote(m);
+    window.clearTimeout(noteTimer.current);
+    noteTimer.current = window.setTimeout(() => setSyncNote(null), 6000);
+  }, []);
+  const okBuild = status?.last_success_build ?? null;
+  const showInPdf = useCallback(
+    async (path: string, line: number) => {
+      if (!okBuild?.has_pdf) return note("No PDF yet: compile first.");
+      try {
+        const r = await api.synctexForward(okBuild.id, path, line);
+        const b = r.boxes[0];
+        if (!b) return note(`Line ${line} of ${path} has no position in the PDF (comment, preamble or not part of this build).`);
+        setPdfMark({ ...b, nonce: Date.now() });
+        if (narrow) setNarrowTab("pdf");
+        else pdfRef.current?.expand();
+        if (status?.pdf_stale) note("The PDF is older than the text; the position may be off. Compile to refresh.");
+      } catch (e) {
+        note(errorMessage(e));
+      }
+    },
+    [okBuild, narrow, status?.pdf_stale, note],
+  );
+  completion.current.sync = (path, line) => void showInPdf(path, line);
+  const sourceAt = useCallback(
+    async (page: number, x: number, y: number) => {
+      if (!okBuild?.has_pdf) return;
+      try {
+        const r = await api.synctexInverse(okBuild.id, page, x, y);
+        if (!r.source) return note("That spot does not come from a project file.");
+        jumpTo(r.source.path, r.source.line);
+        if (status?.pdf_stale) note("The PDF is older than the text; the line may be off. Compile to refresh.");
+      } catch (e) {
+        note(errorMessage(e));
+      }
+    },
+    [okBuild, jumpTo, status?.pdf_stale, note],
+  );
+
   const building = compiling || lb?.status === "queued" || lb?.status === "running";
 
   // Auto compile (off by default; compiling costs server CPU). Once the text has been unchanged for
@@ -422,7 +467,17 @@ export default function WorkspacePage() {
       tasksKey={refreshKey}
     />
   );
-  const pdf = <PdfPanel status={status} projectName={project.data.name} onShowLog={showLog} canCompile={canEdit} />;
+  const pdf = (
+    <PdfPanel
+      status={status}
+      projectName={project.data.name}
+      onShowLog={showLog}
+      canCompile={canEdit}
+      mark={pdfMark}
+      onSourceClick={(page, x, y) => void sourceAt(page, x, y)}
+      notice={syncNote}
+    />
+  );
   const ai = (
     <AiPanel
       pid={pid}
@@ -446,6 +501,7 @@ export default function WorkspacePage() {
         compiling={building}
         compileError={compileError}
         onCompile={() => void compile()}
+        onExportError={setCompileError}
         autoCompile={autoCompile}
         onToggleAutoCompile={toggleAutoCompile}
         members={project.data.members ?? []}

@@ -113,6 +113,18 @@ export default function EditorArea(p: Props) {
           );
         })}
         <div className="spacer" />
+        <button
+          className="btn btn-sm btn-ghost"
+          title="Show the caret's line in the PDF (Ctrl+Alt+J). Double-click the PDF to jump to the source."
+          onClick={() => {
+            const c = p.completion.current.cursor;
+            const path = c?.path === p.active ? c : p.active ? { path: p.active, line: 1 } : null;
+            if (path) p.completion.current.sync(path.path, path.line);
+          }}
+          disabled={!p.active}
+        >
+          Show in PDF
+        </button>
         {!p.readOnly && p.ai.on && p.ai.models && (
           <select
             className="ai-model"

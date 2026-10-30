@@ -11,7 +11,7 @@ from sqlalchemy import select
 from .config import get_settings
 from .db import SessionLocal, engine
 from .models import Base, User
-from .routers import auth, builds, collab_proxy, complete, files, internal, projects, proposals, references, system, tasks
+from .routers import auth, builds, collab_proxy, complete, files, zotero as zotero_router, internal, projects, proposals, references, system, tasks
 from .security.passwords import hash_password
 
 log = logging.getLogger("prism")
@@ -44,7 +44,7 @@ def create_app() -> FastAPI:
     app = FastAPI(title="Prism Research Workspace", version="0.1.0", lifespan=lifespan,
                   docs_url="/api/docs", openapi_url="/api/openapi.json")
     for r in (auth.router, projects.router, files.router, builds.router, tasks.router, proposals.router,
-              system.router, internal.router, collab_proxy.router, references.router, complete.router):
+              system.router, internal.router, collab_proxy.router, references.router, complete.router, zotero_router.router):
         app.include_router(r)
 
     @app.get("/api/health")

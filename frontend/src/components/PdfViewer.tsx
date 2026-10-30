@@ -4,6 +4,7 @@ import type { PDFDocumentProxy, PDFPageProxy, RenderTask } from "pdfjs-dist";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { IconDownload, IconFit, IconZoomIn, IconZoomOut } from "./Icons";
+import type { PdfMark } from "../types";
 import { ErrorBox, Loading } from "./ui";
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
@@ -15,9 +16,13 @@ interface Props {
   downloadName?: string;
   /** Extra header content (build info, badges). */
   header?: ReactNode;
+  /** A region to scroll to and flash (from a source position); a new nonce re-triggers it. */
+  mark?: PdfMark | null;
+  /** Double-click on a page: page number and PDF-point position, for source lookup. */
+  onSourceClick?: (page: number, x: number, y: number) => void;
 }
 
-export default function PdfViewer({ url, downloadName, header }: Props) {
+export default function PdfViewer({ url, downloadName, header, mark, onSourceClick }: Props) {
   const [doc, setDoc] = useState<PDFDocumentProxy | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [scale, setScale] = useState<number | "fit">("fit");
@@ -101,6 +106,17 @@ export default function PdfViewer({ url, downloadName, header }: Props) {
     [doc],
   );
 
+  // Scroll a requested region into view (re-run when the document is replaced, in case it arrives later).
+  useEffect(() => {
+    const el = scroller.current;
+    if (!mark || !el || !doc) return;
+    const pg = el.querySelector<HTMLElement>(`[data-page="${mark.page}"]`);
+    if (!pg) return;
+    const top = pg.offsetTop + mark.y * effScale - el.clientHeight / 3;
+    el.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mark?.nonce, doc]);
+
   // Track the current page while scrolling.
   const onScroll = () => {
     const el = scroller.current;
@@ -174,14 +190,28 @@ export default function PdfViewer({ url, downloadName, header }: Props) {
         {!doc && !error && <Loading text="Loading PDF…" />}
         {doc &&
           Array.from({ length: doc.numPages }, (_, i) => (
-            <PdfPage key={i + 1} doc={doc} number={i + 1} scale={effScale} root={scroller.current} />
+            <PdfPage key={i + 1} doc={doc} number={i + 1} scale={effScale} root={scroller.current} mark={mark?.page === i + 1 ? mark : null} onSourceClick={onSourceClick} />
           ))}
       </div>
     </div>
   );
 }
 
-function PdfPage({ doc, number, scale, root }: { doc: PDFDocumentProxy; number: number; scale: number; root: HTMLElement | null }) {
+function PdfPage({
+  doc,
+  number,
+  scale,
+  root,
+  mark,
+  onSourceClick,
+}: {
+  doc: PDFDocumentProxy;
+  number: number;
+  scale: number;
+  root: HTMLElement | null;
+  mark: PdfMark | null;
+  onSourceClick?: (page: number, x: number, y: number) => void;
+}) {
   const wrap = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const [pg, setPg] = useState<PDFPageProxy | null>(null);
@@ -238,8 +268,28 @@ function PdfPage({ doc, number, scale, root }: { doc: PDFDocumentProxy; number: 
   const w = vp?.width ?? 612 * scale;
   const h = vp?.height ?? 792 * scale;
   return (
-    <div className="pdf-page" data-page={number} ref={wrap} style={{ width: w, height: h }} aria-label={`Page ${number}`} role="img">
+    <div
+      className="pdf-page"
+      data-page={number}
+      ref={wrap}
+      style={{ width: w, height: h }}
+      aria-label={`Page ${number}`}
+      role="img"
+      title={onSourceClick ? "Double-click to jump to the source" : undefined}
+      onDoubleClick={(e) => {
+        if (!onSourceClick || !wrap.current) return;
+        const r = wrap.current.getBoundingClientRect();
+        onSourceClick(number, (e.clientX - r.left) / scale, (e.clientY - r.top) / scale);
+      }}
+    >
       <canvas ref={canvas} style={{ width: w, height: h }} />
+      {mark && (
+        <div
+          key={mark.nonce}
+          className="pdf-mark"
+          style={{ left: mark.x * scale - 3, top: mark.y * scale - 2, width: Math.max(mark.w * scale, 12) + 6, height: Math.max(mark.h * scale, 10) + 4 }}
+        />
+      )}
     </div>
   );
 }
