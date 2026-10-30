@@ -2266,3 +2266,7 @@ td.row-actions {
 /* which file Compile builds */
 .compile-target { max-width: 190px; font-family: var(--mono, monospace); font-size: 12px; }
 .compile-target.on { color: var(--accent); }
+
+/* failed-build help: install a missing package / fix with AI */
+.build-help { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; margin: 6px 0; border: 1px solid var(--border); border-radius: 6px; background: var(--surface-2, transparent); }
+.build-help-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }

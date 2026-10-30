@@ -277,6 +277,13 @@ export default function WorkspacePage() {
       setCompiling(false);
     }
   }, [canEdit, compiling, collab.enabled, pid, cache, onSaveState, refreshStatus, target, mainFile]);
+  const installPackage = useCallback(
+    async (file: string) => {
+      await api.installTexPackage(pid, file);
+      await compile();
+    },
+    [pid, compile],
+  );
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
@@ -499,6 +506,9 @@ export default function WorkspacePage() {
       buildError={buildError}
       onJump={jumpTo}
       tasksKey={refreshKey}
+      canEdit={canEdit}
+      onInstallPackage={installPackage}
+      onTaskCreated={() => void refreshStatus()}
     />
   );
   const pdf = (

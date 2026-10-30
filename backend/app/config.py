@@ -60,6 +60,8 @@ class Settings(BaseSettings):
     # Extra read-only roots that must be visible inside the sandbox (TeX tree).
     tex_root: str = Field(default="", alias="TEX_ROOT")
     compile_sandbox: str = Field(default="bwrap", alias="COMPILE_SANDBOX")  # bwrap | none
+    # A failed build can offer to install the TeX Live package that provides a missing .sty/.cls (tlmgr, official repository only).
+    allow_tex_package_install: bool = Field(default=True, alias="ALLOW_TEX_PACKAGE_INSTALL")
     allow_unsandboxed_compile: bool = Field(default=False, alias="ALLOW_UNSANDBOXED_COMPILE")
     compile_timeout_seconds: int = Field(default=180, alias="COMPILE_TIMEOUT_SECONDS")
     compile_memory_mb: int = Field(default=2048, alias="COMPILE_MEMORY_MB")

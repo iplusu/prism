@@ -135,6 +135,23 @@ def drain(kinds: list[str] | None = None, max_jobs: int = 100) -> int:
     return n
 
 
+def recover_orphans(db) -> None:
+    """After a restart: tasks and builds whose job died are reported as failed, not left spinning."""
+    # Tasks whose job died are reported as failed rather than left hanging.
+    for t in db.query(Task).filter(Task.status.in_(("planning", "running", "verifying"))).all():
+        if not db.query(Job).filter(Job.ref_id == t.id, Job.status.in_(("queued", "running"))).count():
+            t.status = "failed"
+            t.error = "worker restarted while the task was running"
+            t.updated_at = now()
+    # Builds whose job died stay "running" and the UI spins (and disables Compile) forever.
+    for b in db.query(Build).filter(Build.status.in_(("queued", "running"))).all():
+        if not db.query(Job).filter(Job.ref_id == b.id, Job.status.in_(("queued", "running"))).count():
+            b.status = "failed"
+            b.error = "the worker stopped before this build finished"
+            b.finished_at = now()
+    db.commit()
+
+
 def main() -> None:
     import argparse
 
@@ -153,13 +170,7 @@ def main() -> None:
     db = SessionLocal()
     try:
         n = jobs.requeue_stale(db, older_than_seconds=0 if not s.is_postgres else 120)
-        # Tasks whose job died are reported as failed rather than left hanging.
-        for t in db.query(Task).filter(Task.status.in_(("planning", "running", "verifying"))).all():
-            if not db.query(Job).filter(Job.ref_id == t.id, Job.status.in_(("queued", "running"))).count():
-                t.status = "failed"
-                t.error = "worker restarted while the task was running"
-                t.updated_at = now()
-        db.commit()
+        recover_orphans(db)
         if n:
             log.warning("marked %d stale jobs as failed", n)
     finally:

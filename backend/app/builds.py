@@ -8,7 +8,7 @@ from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from . import jobs
+from . import jobs, texpkg
 from .compile.latex import compile_project
 from .config import get_settings
 from .models import Build, Project, now
@@ -121,4 +121,5 @@ def build_json(b: Build | None, include_log: bool = False) -> dict | None:
     }
     if include_log:
         d["log"] = b.log_text
+        d["missing_files"] = texpkg.missing_files(b.log_text or "") if b.status == "failed" else []
     return d

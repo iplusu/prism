@@ -1,19 +1,23 @@
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import synctex
+from .. import synctex, texpkg
 from ..builds import BuildTargetError, build_json, pdf_path, request_build
+from ..config import get_settings
 from ..db import get_db
 from ..deps import current_user, get_project_for
 from ..models import Build, User
 from ..projects import store
 from ..projects.documents import CollabUnavailable
 
+log = logging.getLogger("prism.builds")
 router = APIRouter(prefix="/api", tags=["builds"])
 
 
@@ -39,6 +43,30 @@ def compile_project(pid: str, body: CompileIn | None = None, user: User = Depend
     out["fell_back_from"] = fell_back_from
     out["queued_behind"] = pending.id if pending else None
     return out
+
+
+class TexPackageIn(BaseModel):
+    file: str = Field(max_length=120)  # a file a build of this project reported as missing, e.g. titlesec.sty
+
+
+@router.post("/projects/{pid}/tex-packages")
+def install_tex_package(pid: str, body: TexPackageIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Install the TeX Live package that provides a file this project's builds reported as missing."""
+    get_project_for(db, pid, user, "editor")
+    if not get_settings().allow_tex_package_install:
+        raise HTTPException(403, "installing TeX packages is disabled on this server (ALLOW_TEX_PACKAGE_INSTALL)")
+    if not texpkg.is_safe_file(body.file):
+        raise HTTPException(400, "not a LaTeX support file name")
+    recent = db.execute(select(Build.log_text).where(Build.project_id == pid, Build.kind == "main", Build.status == "failed")
+                        .order_by(Build.created_at.desc()).limit(10)).scalars().all()
+    if not any(body.file in texpkg.missing_files(t or "") for t in recent):
+        raise HTTPException(400, f"no recent failed build of this project reported {body.file} as missing")
+    try:
+        res = texpkg.install_for(body.file)
+    except texpkg.TexPackageError as e:
+        raise HTTPException(e.status, str(e)) from e
+    log.warning("TeX package install: file=%s package=%s by user=%s project=%s", body.file, res["package"], user.id, pid)
+    return res
 
 
 @router.get("/projects/{pid}/builds")

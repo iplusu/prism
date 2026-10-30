@@ -214,6 +214,8 @@ export const api = {
   // --- tasks ------------------------------------------------------------
   createTask: (pid: string, request_: string, mode: TaskMode, context: TaskContextSpec) =>
     request<Task>(`${P(pid)}/tasks`, { method: "POST", body: { request: request_, mode, context } }),
+  installTexPackage: (pid: string, file: string) =>
+    request<{ file: string; package: string | null; installed: boolean; note: string }>(`${P(pid)}/tex-packages`, { method: "POST", body: { file } }),
   tasks: (pid: string, limit = 50) => request<Task[]>(`${P(pid)}/tasks?limit=${limit}`),
   task: (tid: string) => request<TaskDetail>(`/api/tasks/${enc(tid)}`),
   taskStreamUrl: (tid: string, after = 0) => `/api/tasks/${enc(tid)}/stream${after ? `?after=${after}` : ""}`,

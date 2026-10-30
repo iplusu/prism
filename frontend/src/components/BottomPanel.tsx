@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { api } from "../api";
 import type { Build, Diagnostic, ProjectStatus, Task } from "../types";
-import { fmtDuration, fmtTime, modeLabel, relTime, shortRev, useAsync } from "../util";
+import { fmtDuration, fmtTime, modeLabel, relTime, shortRev, useAction, useAsync } from "../util";
 import { IconRetry } from "./Icons";
 import { Badge, Empty, ErrorBox, Loading, Tabs, Tag } from "./ui";
 
@@ -17,6 +17,11 @@ interface Props {
   buildError: string | null;
   onJump: (path: string, line: number) => void;
   tasksKey: unknown;
+  canEdit: boolean;
+  /** Install the TeX package behind a missing file, then recompile. */
+  onInstallPackage: (file: string) => Promise<void>;
+  /** A task was created from here: refresh the AI panel and task lists. */
+  onTaskCreated: () => void;
 }
 
 export default function BottomPanel(p: Props) {
@@ -48,7 +53,7 @@ export default function BottomPanel(p: Props) {
         ]}
       />
       <div className="bottom-body" role="tabpanel">
-        {p.tab === "log" && <BuildLog build={p.build} error={p.buildError} status={p.status} />}
+        {p.tab === "log" && <BuildLog pid={p.pid} build={p.build} error={p.buildError} status={p.status} canEdit={p.canEdit} onInstall={p.onInstallPackage} onTaskCreated={p.onTaskCreated} />}
         {p.tab === "problems" && <Problems diags={diags} build={p.build} onJump={p.onJump} />}
         {p.tab === "tasks" && <TaskHistory pid={p.pid} refreshKey={p.tasksKey} />}
       </div>
@@ -78,13 +83,61 @@ function BuildSummary({ b }: { b: Build }) {
   );
 }
 
-function BuildLog({ build, error, status }: { build: Build | undefined; error: string | null; status: ProjectStatus | undefined }) {
+/** What a failed build offers: install a missing TeX package, or hand the errors to the AI. */
+function FailedBuildHelp({ pid, build, canEdit, onInstall, onTaskCreated }: { pid: string; build: Build; canEdit: boolean; onInstall: (file: string) => Promise<void>; onTaskCreated: () => void }) {
+  const missing = build.missing_files ?? [];
+  const errors = build.diagnostics.filter((d) => d.severity === "error");
+  const [sent, setSent] = useState(false);
+  const install = useAction(async (file: string) => onInstall(file));
+  const fix = useAction(async () => {
+    const lines = errors.slice(0, 12).map((d) => `- ${d.file ?? "?"}${d.line ? `:${d.line}` : ""}: ${d.message}`).join("\n");
+    const tail = (build.log ?? "").split("\n").slice(-40).join("\n");
+    await api.createTask(
+      pid,
+      `The last compile of ${build.main_file} failed. Fix the LaTeX source so that it compiles, changing as little as possible and never removing content.\n\nErrors reported:\n${lines || "(none parsed)"}\n\nEnd of the build log:\n${tail}`,
+      "auto",
+      { scope: "project" },
+    );
+    setSent(true);
+    onTaskCreated();
+  });
+  if (build.status !== "failed" || !canEdit) return null;
+  return (
+    <div className="build-help small" role="group" aria-label="Fix this failure">
+      {missing.map((f) => (
+        <div key={f} className="build-help-row">
+          <span>
+            Missing LaTeX file <code>{f}</code>: it belongs to a TeX package that is not installed on this server.
+          </span>
+          <button className="btn btn-sm btn-primary" disabled={install.busy} onClick={() => void install.run(f)}>
+            {install.busy ? "Installing…" : "Install package and recompile"}
+          </button>
+        </div>
+      ))}
+      {missing.length === 0 && errors.length > 0 && (
+        <div className="build-help-row">
+          <span>
+            {errors.length} error{errors.length === 1 ? "" : "s"}. The AI can propose a fix; you review and apply it as usual.
+          </span>
+          <button className="btn btn-sm" disabled={fix.busy} onClick={() => void fix.run()}>
+            {fix.busy ? "Sending…" : "Fix with AI"}
+          </button>
+        </div>
+      )}
+      {sent && !fix.error && <div className="muted tiny">Task created: follow it in the AI panel or Task history.</div>}
+      <ErrorBox error={install.error || fix.error} />
+    </div>
+  );
+}
+
+function BuildLog({ pid, build, error, status, canEdit, onInstall, onTaskCreated }: { pid: string; build: Build | undefined; error: string | null; status: ProjectStatus | undefined; canEdit: boolean; onInstall: (file: string) => Promise<void>; onTaskCreated: () => void }) {
   if (error) return <ErrorBox error={error} />;
   if (!status?.last_build) return <Empty>No builds yet.</Empty>;
   if (!build) return <Loading text="Loading build log…" />;
   return (
     <div className="build-log">
       <BuildSummary b={build} />
+      <FailedBuildHelp pid={pid} build={build} canEdit={canEdit} onInstall={onInstall} onTaskCreated={onTaskCreated} />
       {build.error && (
         <div className={`error-box ${build.status === "blocked" ? "" : "soft"}`} role={build.status === "blocked" ? "alert" : undefined}>
           {build.status === "blocked" ? "Build blocked: " : ""}

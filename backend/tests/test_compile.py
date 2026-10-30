@@ -172,3 +172,23 @@ def test_compile_target_validation(alice):
         assert alice.post(f"/api/projects/{pid}/builds", json={"main_file": bad}).status_code == 400, bad
     assert alice.post(f"/api/projects/{pid}/builds").status_code == 200  # no body: the main file, as before
     drain()
+
+
+def test_restart_fails_orphaned_builds_but_keeps_queued_ones(alice):
+    """A build whose job died stayed 'running' and disabled Compile forever."""
+    from app.db import SessionLocal
+    from app.models import Build, Job
+    from app.worker import recover_orphans
+
+    pid = new_sample_project(alice)["id"]
+    orphan = alice.post(f"/api/projects/{pid}/builds").json()
+    live = alice.post(f"/api/projects/{pid}/builds").json()
+    with SessionLocal() as db:
+        db.get(Build, orphan["id"]).status = "running"  # its job is gone
+        db.query(Job).filter(Job.ref_id == orphan["id"]).delete()
+        db.commit()
+        recover_orphans(db)
+    assert alice.get(f"/api/builds/{orphan['id']}").json()["status"] == "failed"
+    assert alice.get(f"/api/builds/{live['id']}").json()["status"] == "queued"  # still has its queued job
+    drain()
+    assert alice.get(f"/api/builds/{live['id']}").json()["status"] == "succeeded"

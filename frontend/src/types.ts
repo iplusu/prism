@@ -43,6 +43,8 @@ export interface Build {
   proposal_id: string | null;
   log?: string;
   queued_behind?: string | null;
+  /** LaTeX support files (e.g. titlesec.sty) the failed build could not find. */
+  missing_files?: string[];
 }
 
 export type Executor = "codex" | "claude" | "antigravity";
