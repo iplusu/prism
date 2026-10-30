@@ -24,16 +24,45 @@ def pdf_path(bid: str) -> Path:
     return build_dir(bid) / "output.pdf"
 
 
-def request_build(db: Session, project: Project, user_name: str, user_id: str | None) -> Build:
+class BuildTargetError(ValueError):
+    """The requested file cannot be compiled as a document."""
+
+
+def _resolve_target(project_id: str, revision: str, requested: str, project_main: str, fallback: bool) -> tuple[str, str | None]:
+    """The .tex file to compile and, when the request had to fall back to the main file, the file asked for."""
+    try:
+        rel = store.normalize(requested)
+    except Exception as e:  # noqa: BLE001
+        raise BuildTargetError(f"invalid file name: {e}") from e
+    if not rel.lower().endswith(".tex"):
+        raise BuildTargetError(f"{rel} is not a .tex file")
+    try:
+        text = store.git(project_id, "show", f"{revision}:{rel}").decode("utf-8", errors="replace")
+    except store.StoreError as e:
+        raise BuildTargetError(f"{rel} does not exist in the project") from e
+    if "\\documentclass" in text:
+        return rel, None
+    if fallback and rel != project_main:
+        return project_main, rel
+    raise BuildTargetError(f"{rel} is not a standalone document (it has no \\documentclass); compile the main file instead")
+
+
+def request_build(db: Session, project: Project, user_name: str, user_id: str | None, main_file: str | None = None,
+                  fallback_to_main: bool = False) -> tuple[Build, str | None]:
+    """Queue a compile of `main_file` (default: the project's main file); returns the build and, if the
+    request fell back to the main file because the file is not a standalone document, the file asked for."""
     snap = documents.snapshot(project.id, author=user_name, message="Compile")
+    target, fell_back_from = project.main_file, None
+    if main_file and main_file != project.main_file:
+        target, fell_back_from = _resolve_target(project.id, snap.revision, main_file, project.main_file, fallback_to_main)
     b = Build(project_id=project.id, kind="main", revision=snap.revision, source_hash=snap.tree_hash,
-              engine=project.engine, main_file=project.main_file, created_by=user_id)
+              engine=project.engine, main_file=target, created_by=user_id)
     db.add(b)
     db.flush()
     project.last_build_id = b.id
     jobs.enqueue(db, "compile", project.id, b.id)
     db.commit()
-    return b
+    return b, fell_back_from
 
 
 def run_build(db: Session, build: Build, files: dict[str, bytes] | None = None, should_cancel=lambda: False) -> Build:

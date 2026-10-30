@@ -31,6 +31,8 @@ interface Props {
     setModel: (m: string | null) => void;
   };
   onSelection: (s: SelectionInfo | null) => void;
+  selection: SelectionInfo | null;
+  onAskAi: () => void;
   onSaveState: (path: string, s: SaveState) => void;
   onSaved: () => void;
 }
@@ -91,6 +93,7 @@ export default function EditorArea(p: Props) {
     );
   }
 
+  const canAsk = !p.readOnly && !!p.selection && p.selection.path === p.active;
   return (
     <div className="editor-area">
       <div className="file-tabs" role="tablist" aria-label="Open files">
@@ -158,7 +161,20 @@ export default function EditorArea(p: Props) {
           </button>
         )}
       </div>
-      <div className="editor-body">{body}</div>
+      <div className="editor-body">
+        {body}
+        {canAsk && (
+          <button
+            className="btn btn-sm btn-primary ask-ai"
+            // keep the editor's selection: a click must not move focus away first
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={p.onAskAi}
+            title={`Send lines ${p.selection!.from_line}–${p.selection!.to_line} to the AI assistant as the target`}
+          >
+            Ask AI about selection
+          </button>
+        )}
+      </div>
     </div>
   );
 }

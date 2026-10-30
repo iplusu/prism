@@ -205,7 +205,8 @@ export const api = {
     request<ReferenceImport>(`${P(pid)}/references`, { method: "POST", body: { source, id } }),
 
   // --- builds -----------------------------------------------------------
-  compile: (pid: string) => request<Build>(`${P(pid)}/builds`, { method: "POST" }),
+  compile: (pid: string, body?: { main_file?: string; fallback_to_main?: boolean }) =>
+    request<Build & { fell_back_from: string | null }>(`${P(pid)}/builds`, { method: "POST", body: body ?? undefined }),
   builds: (pid: string, limit = 20) => request<Build[]>(`${P(pid)}/builds?limit=${limit}`),
   build: (bid: string) => request<Build>(`/api/builds/${enc(bid)}`),
   buildPdfUrl: (bid: string) => `/api/builds/${enc(bid)}/pdf`,

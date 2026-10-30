@@ -16,6 +16,7 @@ from .builds import run_build
 from .config import get_settings
 from .db import SessionLocal
 from .models import Build, Job, Project, Proposal, Task, now
+from .security.redact import redact
 
 log = logging.getLogger("prism.worker")
 _stop = threading.Event()
@@ -37,7 +38,18 @@ def handle(job: Job) -> None:
             b = db.get(Build, job.ref_id)
             if b is None:
                 return
-            run_build(db, b)
+            try:
+                run_build(db, b)
+            except Exception as e:  # noqa: BLE001
+                # Never leave the build "running": the UI would show it compiling forever.
+                db.rollback()
+                b = db.get(Build, job.ref_id)
+                if b is not None and b.status in ("queued", "running"):
+                    b.status = "failed"
+                    b.error = redact(f"{type(e).__name__}: {e}")[:2000]
+                    b.finished_at = now()
+                    db.commit()
+                raise
         elif job.kind == "agent":
             from .agent.orchestrator import Runner
 

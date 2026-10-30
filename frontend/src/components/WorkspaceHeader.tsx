@@ -35,6 +35,10 @@ interface Props {
   compiling: boolean;
   compileError: string | null;
   onCompile: () => void;
+  compileTarget?: string;
+  mainFile?: string;
+  compileCurrent: boolean;
+  onToggleCompileCurrent: () => void;
   onExportError: (m: string) => void;
   autoCompile: boolean;
   onToggleAutoCompile: () => void;
@@ -139,6 +143,21 @@ export default function WorkspaceHeader(p: Props) {
           aria-describedby={p.compileError ? "compile-err" : undefined}
         >
           {p.compiling ? <Spinner label="Compiling" /> : <IconPlay />} <span>Compile</span>
+        </button>
+      )}
+      {p.canEdit && (
+        <button
+          className={`btn btn-sm btn-ghost compile-target ${p.compileCurrent ? "on" : ""}`}
+          role="switch"
+          aria-checked={p.compileCurrent}
+          onClick={p.onToggleCompileCurrent}
+          title={
+            p.compileCurrent
+              ? `Compile builds the open .tex file; its PDF is named after it. A file without \\documentclass builds the main file (${p.mainFile}). Click to always build the main file.`
+              : `Compile always builds the main file (${p.mainFile}). Click to build the open .tex file instead.`
+          }
+        >
+          <span className="ellipsis">{p.compileTarget ?? "…"}</span>
         </button>
       )}
       {p.canEdit && (

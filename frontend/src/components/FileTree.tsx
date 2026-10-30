@@ -40,6 +40,37 @@ interface Props {
   onDeleted: (path: string) => void;
 }
 
+type Dropped = { file: File; directory: string };
+
+/** Files from a drop, including the contents of dropped folders (relative folder path kept). */
+async function collectDropped(dt: DataTransfer): Promise<Dropped[]> {
+  const out: Dropped[] = [];
+  const walk = async (entry: FileSystemEntry, parent: string): Promise<void> => {
+    if (entry.isFile) {
+      const file = await new Promise<File>((res, rej) => (entry as FileSystemFileEntry).file(res, rej));
+      out.push({ file, directory: parent });
+    } else if (entry.isDirectory) {
+      const reader = (entry as FileSystemDirectoryEntry).createReader();
+      const here = parent ? `${parent}/${entry.name}` : entry.name;
+      for (;;) {
+        const batch = await new Promise<FileSystemEntry[]>((res, rej) => reader.readEntries(res, rej));
+        if (!batch.length) break;
+        for (const e of batch) await walk(e, here);
+      }
+    }
+  };
+  // entries must be read synchronously from the event, before any await
+  const entries = Array.from(dt.items ?? [])
+    .filter((i) => i.kind === "file")
+    .map((i) => i.webkitGetAsEntry?.() ?? null);
+  if (entries.length && entries.every((e) => e)) {
+    for (const e of entries) await walk(e!, "");
+  } else {
+    for (const f of Array.from(dt.files)) out.push({ file: f, directory: "" });
+  }
+  return out;
+}
+
 export default function FileTree(p: Props) {
   const tree = useMemo(() => buildTree(p.files ?? []), [p.files]);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
@@ -72,6 +103,40 @@ export default function FileTree(p: Props) {
     for (const f of Array.from(files)) await api.uploadFile(p.pid, f, dir);
     p.onChanged();
   });
+  const [dropOver, setDropOver] = useState<string | null>(null); // "" = whole panel, else folder path
+  const drop = useAction(async (items: Dropped[], target: string) => {
+    const failed: string[] = [];
+    for (const { file, directory } of items) {
+      const at = [target, directory].filter(Boolean).join("/");
+      try {
+        await api.uploadFile(p.pid, file, at);
+      } catch (e) {
+        failed.push(`${file.name}: ${e instanceof Error ? e.message : "failed"}`);
+      }
+    }
+    p.onChanged();
+    if (failed.length) throw new Error(`${failed.length} of ${items.length} not uploaded — ${failed.join("; ")}`);
+  });
+  const dropProps = (target: string | null) => ({
+    onDragOver: (e: React.DragEvent) => {
+      if (!p.canEdit || !e.dataTransfer.types.includes("Files")) return;
+      e.preventDefault();
+      e.stopPropagation();
+      e.dataTransfer.dropEffect = "copy";
+      setDropOver(target ?? dir);
+    },
+    onDragLeave: (e: React.DragEvent) => {
+      if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDropOver(null);
+    },
+    onDrop: (e: React.DragEvent) => {
+      if (!p.canEdit || !e.dataTransfer.types.includes("Files")) return;
+      e.preventDefault();
+      e.stopPropagation();
+      setDropOver(null);
+      const pending = collectDropped(e.dataTransfer);
+      void pending.then((items) => (items.length ? drop.run(items, target ?? dir) : undefined));
+    },
+  });
 
   const toggle = (path: string) =>
     setCollapsed((s) => {
@@ -98,7 +163,8 @@ export default function FileTree(p: Props) {
       items.push(
         <li key={`d:${sub.path}`} role="treeitem" aria-expanded={isOpen} aria-selected={dir === sub.path}>
           <button
-            className={`tree-row ${dir === sub.path ? "selected-dir" : ""}`}
+            {...dropProps(sub.path)}
+            className={`tree-row ${dir === sub.path ? "selected-dir" : ""} ${dropOver === sub.path ? "drop-target" : ""}`}
             style={{ paddingLeft: 8 + depth * 14 }}
             onClick={() => {
               toggle(sub.path);
@@ -194,7 +260,7 @@ export default function FileTree(p: Props) {
   };
 
   return (
-    <div className="side-panel">
+    <div className={`side-panel ${dropOver !== null ? "drop-over" : ""}`} {...dropProps(null)}>
       <div className="side-head">
         <span className="side-title">Files</span>
         <div className="spacer" />
@@ -243,8 +309,13 @@ export default function FileTree(p: Props) {
           </button>
         </div>
       )}
-      {up.busy && <div className="muted small side-note">Uploading…</div>}
-      <ErrorBox error={p.error || create.error || rename.error || del.error || up.error} />
+      {p.canEdit && dropOver !== null && (
+        <div className="drop-hint small" role="status">
+          Drop to upload into <code>{dropOver ? `${dropOver}/` : "the project root"}</code>
+        </div>
+      )}
+      {(up.busy || drop.busy) && <div className="muted small side-note">Uploading…</div>}
+      <ErrorBox error={p.error || create.error || rename.error || del.error || up.error || drop.error} />
       <div className="side-scroll">
         {p.files && p.files.length === 0 ? (
           <Empty>No files.</Empty>

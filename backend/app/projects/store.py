@@ -170,8 +170,10 @@ def log(pid: str, limit: int = 100) -> list[dict]:
 def files_at(pid: str, rev: str) -> dict[str, bytes]:
     if not rev or not all(c in "0123456789abcdef" for c in rev):
         raise StoreError("invalid revision")
-    data = git(pid, "archive", "--format=tar", rev)
     out: dict[str, bytes] = {}
+    if not git(pid, "ls-tree", "-r", "--name-only", rev).strip():
+        return out  # a commit with no files: `git archive` yields a tar without members, which tarfile rejects
+    data = git(pid, "archive", "--format=tar", rev)
     with tarfile.open(fileobj=io.BytesIO(data)) as tf:
         for m in tf.getmembers():
             if m.isfile():

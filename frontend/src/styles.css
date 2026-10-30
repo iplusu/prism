@@ -2253,3 +2253,16 @@ td.row-actions {
   gap: 6px;
   margin-bottom: 6px;
 }
+
+/* drag-and-drop upload into the file tree */
+.side-panel.drop-over { outline: 2px dashed var(--accent, #4f7cff); outline-offset: -4px; }
+.tree-row.drop-target { background: color-mix(in srgb, var(--accent, #4f7cff) 22%, transparent); }
+.drop-hint { padding: 6px 12px; color: var(--accent, #4f7cff); }
+
+/* "Ask AI about selection" floats over the editor while text is selected */
+.editor-body { position: relative; }
+.ask-ai { position: absolute; right: 18px; bottom: 14px; z-index: 5; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25); }
+
+/* which file Compile builds */
+.compile-target { max-width: 190px; font-family: var(--mono, monospace); font-size: 12px; }
+.compile-target.on { color: var(--accent); }

@@ -2,11 +2,12 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .. import synctex
-from ..builds import build_json, pdf_path, request_build
+from ..builds import BuildTargetError, build_json, pdf_path, request_build
 from ..db import get_db
 from ..deps import current_user, get_project_for
 from ..models import Build, User
@@ -16,16 +17,26 @@ from ..projects.documents import CollabUnavailable
 router = APIRouter(prefix="/api", tags=["builds"])
 
 
+class CompileIn(BaseModel):
+    main_file: str | None = Field(default=None, max_length=500)  # any .tex file with a \\documentclass; default: the project's main file
+    fallback_to_main: bool = False  # a file without \\documentclass compiles the main file instead of failing
+
+
 @router.post("/projects/{pid}/builds")
-def compile_project(pid: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
+def compile_project(pid: str, body: CompileIn | None = None, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    body = body or CompileIn()
     p, _ = get_project_for(db, pid, user, "editor")
     pending = db.execute(select(Build).where(Build.project_id == pid, Build.kind == "main",
                                              Build.status.in_(("queued", "running")))).scalars().first()
     try:
-        b = request_build(db, p, user.display_name or user.username, user.id)
+        b, fell_back_from = request_build(db, p, user.display_name or user.username, user.id,
+                                          main_file=body.main_file, fallback_to_main=body.fallback_to_main)
     except CollabUnavailable as e:
         raise HTTPException(503, str(e)) from e
+    except BuildTargetError as e:
+        raise HTTPException(400, str(e)) from e
     out = build_json(b)
+    out["fell_back_from"] = fell_back_from
     out["queued_behind"] = pending.id if pending else None
     return out
 

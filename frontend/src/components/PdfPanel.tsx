@@ -7,7 +7,7 @@ import { Empty, Spinner, Tag } from "./ui";
 function BuildInfo({ b }: { b: Build }) {
   return (
     <span className="build-info small" title={`Build ${b.id}\nRevision ${b.revision}\nEngine ${b.engine}, main file ${b.main_file}\nIsolation: ${b.isolation || "n/a"}`}>
-      Build {relTime(b.finished_at || b.created_at)} · <code>{shortRev(b.revision)}</code>
+      <code>{b.main_file}</code> · {relTime(b.finished_at || b.created_at)} · <code>{shortRev(b.revision)}</code>
     </span>
   );
 }
@@ -110,7 +110,7 @@ export default function PdfPanel({
           {notice}
         </div>
       )}
-      <PdfViewer url={api.buildPdfUrl(ok.id)} downloadName={`${projectName || "paper"}.pdf`} header={header} mark={mark} onSourceClick={onSourceClick} />
+      <PdfViewer url={api.buildPdfUrl(ok.id)} downloadName={`${ok.main_file.split("/").pop()!.replace(/\.tex$/i, "") || projectName || "paper"}.pdf`} header={header} mark={mark} onSourceClick={onSourceClick} />
     </div>
   );
 }

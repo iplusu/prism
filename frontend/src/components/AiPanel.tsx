@@ -16,6 +16,8 @@ interface Props {
   demoMode: boolean;
   defaultMode: string | undefined;
   selection: SelectionInfo | null;
+  /** Set by the editor's "Ask AI" button: pins that selection as the target and focuses the request box. */
+  ask: { sel: SelectionInfo; nonce: number } | null;
   activePath: string | null;
   /** Changes whenever the project status poll sees different tasks/proposals. */
   refreshKey: string;
@@ -58,6 +60,8 @@ export default function AiPanel(p: Props) {
   const [mode, setMode] = useState<TaskMode>("auto");
   const [scope, setScope] = useState<Scope>("project");
   const listRef = useRef<HTMLDivElement>(null);
+  const textRef = useRef<HTMLTextAreaElement>(null);
+  const [pinned, setPinned] = useState<SelectionInfo | null>(null);
   const navigate = useNavigate();
 
   // Project default executor (policy) preselects the tool once known.
@@ -87,21 +91,31 @@ export default function AiPanel(p: Props) {
     p.onTaskChange();
   };
 
-  const effectiveScope: Scope = scope === "selection" && !p.selection ? "project" : scope === "file" && !p.activePath ? "project" : scope;
+  useEffect(() => {
+    if (!p.ask) return;
+    setPinned(p.ask.sel);
+    setScope("selection");
+    textRef.current?.focus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [p.ask?.nonce]);
+
+  const sel = pinned ?? p.selection;
+  const effectiveScope: Scope = scope === "selection" && !sel ? "project" : scope === "file" && !p.activePath ? "project" : scope;
 
   const send = useAction(async () => {
     const ctx: TaskContextSpec =
-      effectiveScope === "selection" && p.selection
+      effectiveScope === "selection" && sel
         ? {
             scope: "selection",
-            path: p.selection.path,
-            selection: { from_line: p.selection.from_line, to_line: p.selection.to_line, text: p.selection.text },
+            path: sel.path,
+            selection: { from_line: sel.from_line, to_line: sel.to_line, text: sel.text },
           }
         : effectiveScope === "file"
           ? { scope: "file", path: p.activePath }
           : { scope: "project" };
     const t = await api.createTask(p.pid, text.trim(), mode, ctx);
     setText("");
+    setPinned(null);
     tasks.setData([t, ...(tasks.data ?? [])]);
     refreshAll();
   });
@@ -166,7 +180,7 @@ export default function AiPanel(p: Props) {
             <div className="seg" role="radiogroup" aria-label="Context sent with the request">
               {(
                 [
-                  ["selection", "Selection", !p.selection],
+                  ["selection", "Selection", !sel],
                   ["file", "Current file", !p.activePath],
                   ["project", "Project", false],
                 ] as [Scope, string, boolean][]
@@ -179,7 +193,10 @@ export default function AiPanel(p: Props) {
                   className={`seg-btn ${effectiveScope === id ? "active" : ""}`}
                   disabled={disabled}
                   title={disabled ? (id === "selection" ? "Select text in the editor first" : "Open a file first") : undefined}
-                  onClick={() => setScope(id)}
+                  onClick={() => {
+                    setScope(id);
+                    if (id !== "selection") setPinned(null);
+                  }}
                 >
                   {label}
                 </button>
@@ -187,8 +204,8 @@ export default function AiPanel(p: Props) {
             </div>
           </fieldset>
           <div className="tiny muted ctx-desc" aria-live="polite">
-            {effectiveScope === "selection" && p.selection
-              ? `${p.selection.path}, lines ${p.selection.from_line}–${p.selection.to_line} (${p.selection.text.length} chars)`
+            {effectiveScope === "selection" && sel
+              ? `${sel.path}, lines ${sel.from_line}–${sel.to_line} (${sel.text.length} chars)`
               : effectiveScope === "file"
                 ? p.activePath
                 : "Whole project"}
@@ -198,6 +215,7 @@ export default function AiPanel(p: Props) {
           </label>
           <textarea
             id="ai-text"
+            ref={textRef}
             rows={3}
             maxLength={20000}
             placeholder="e.g. Tighten the abstract to 150 words without changing any numbers"

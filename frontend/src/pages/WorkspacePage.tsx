@@ -147,6 +147,9 @@ export default function WorkspacePage() {
   const onSaveState = useCallback((path: string, s: SaveState) => setSaveStates((m) => ({ ...m, [path]: s })), []);
   const onSaved = useCallback(() => void refreshStatus(), [refreshStatus]);
   const [selection, setSelection] = useState<SelectionInfo | null>(null);
+  // "Ask AI" on a selection: the snapshot travels with a nonce so the AI panel can pin it, switch to
+  // the selection context and focus its request box (the editor may unmount on narrow screens).
+  const [ask, setAsk] = useState<{ sel: SelectionInfo; nonce: number } | null>(null);
 
   // Warn before leaving with unsaved REST edits.
   useEffect(() => {
@@ -232,6 +235,27 @@ export default function WorkspacePage() {
   // -------------------------------------------------------------- compile ---
   const [compiling, setCompiling] = useState(false);
   const [compileError, setCompileError] = useState<string | null>(null);
+  // Which file Compile builds: the open .tex file (its PDF is named after it) or the project's main file.
+  // A file without \documentclass (an \input section) falls back to the main file on the server.
+  const [compileCurrent, setCompileCurrent] = useState(() => {
+    try {
+      return localStorage.getItem("prism-compile-current") !== "0";
+    } catch {
+      return true;
+    }
+  });
+  const toggleCompileCurrent = useCallback(() => {
+    setCompileCurrent((v) => {
+      try {
+        localStorage.setItem("prism-compile-current", v ? "0" : "1");
+      } catch {
+        /* preference just won't persist */
+      }
+      return !v;
+    });
+  }, []);
+  const mainFile = project.data?.main_file;
+  const target = compileCurrent && active && /\.tex$/i.test(active) ? active : mainFile;
   const compile = useCallback(async () => {
     if (!canEdit || compiling) return;
     setCompiling(true);
@@ -244,14 +268,15 @@ export default function WorkspacePage() {
           return;
         }
       }
-      await api.compile(pid);
+      const r = await api.compile(pid, target && target !== mainFile ? { main_file: target, fallback_to_main: true } : undefined);
+      if (r.fell_back_from) setCompileError(`${r.fell_back_from} has no \\documentclass, so ${r.main_file} was compiled`);
       await refreshStatus();
     } catch (e) {
       setCompileError(errorMessage(e));
     } finally {
       setCompiling(false);
     }
-  }, [canEdit, compiling, collab.enabled, pid, cache, onSaveState, refreshStatus]);
+  }, [canEdit, compiling, collab.enabled, pid, cache, onSaveState, refreshStatus, target, mainFile]);
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
@@ -331,13 +356,14 @@ export default function WorkspacePage() {
   const curHash = status?.current_hash;
   const builtHash = lb?.source_hash;
   useEffect(() => {
-    if (!autoCompile || !canEdit || !curHash || building || builtHash === curHash || autoTried.current === curHash) return;
+    const key = `${curHash}|${target}`;
+    if (!autoCompile || !canEdit || !curHash || building || (builtHash === curHash && lb?.main_file === target) || autoTried.current === key) return;
     const t = window.setTimeout(() => {
-      autoTried.current = curHash;
+      autoTried.current = key;
       void compile();
     }, AUTO_COMPILE_IDLE_MS);
     return () => window.clearTimeout(t);
-  }, [autoCompile, canEdit, curHash, building, builtHash, compile]);
+  }, [autoCompile, canEdit, curHash, building, builtHash, compile, target, lb?.main_file]);
 
   // --------------------------------------------------------------- panels ---
   const sideRef = useRef<ImperativePanelHandle>(null);
@@ -367,6 +393,12 @@ export default function WorkspacePage() {
     }, 0);
     return () => window.clearTimeout(t);
   }, [narrow, projectLoaded]);
+  const askAi = () => {
+    if (!selection) return;
+    setAsk((a) => ({ sel: selection, nonce: (a?.nonce ?? 0) + 1 }));
+    if (narrow) setNarrowTab("ai");
+    else if (aiRef.current?.isCollapsed()) aiRef.current.expand();
+  };
   const [sideTab, setSideTab] = useState<SideTab>("files");
   const [bottomTab, setBottomTab] = useState<BottomTab>("log");
   const showLog = () => {
@@ -451,6 +483,8 @@ export default function WorkspacePage() {
       completion={completion}
       ai={{ on: aiOn, error: aiError, toggle: toggleAi, model: aiModel, models: aiModels, setModel: setAiModel }}
       onSelection={setSelection}
+      selection={selection}
+      onAskAi={askAi}
       onSaveState={onSaveState}
       onSaved={onSaved}
     />
@@ -485,6 +519,7 @@ export default function WorkspacePage() {
       demoMode={config.demo_mode}
       defaultMode={project.data.policy?.default_executor}
       selection={selection}
+      ask={ask}
       activePath={active}
       refreshKey={refreshKey}
       onTaskChange={() => void refreshStatus()}
@@ -501,6 +536,10 @@ export default function WorkspacePage() {
         compiling={building}
         compileError={compileError}
         onCompile={() => void compile()}
+        compileTarget={target}
+        mainFile={mainFile}
+        compileCurrent={compileCurrent}
+        onToggleCompileCurrent={toggleCompileCurrent}
         onExportError={setCompileError}
         autoCompile={autoCompile}
         onToggleAutoCompile={toggleAutoCompile}

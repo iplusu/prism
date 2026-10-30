@@ -102,3 +102,73 @@ def test_blocked_without_sandbox(tmp_path, monkeypatch):
     r = _probe(tmp_path, "x")
     assert r.status == "blocked"
     assert "ALLOW_UNSANDBOXED_COMPILE" in r.error
+
+
+def test_project_with_no_files_fails_cleanly_instead_of_hanging(alice):
+    """Regression: a snapshot with no files made the worker crash and left the build 'running' forever."""
+    pid = new_sample_project(alice)["id"]
+    for f in alice.get(f"/api/projects/{pid}/files").json():
+        assert alice.delete(f"/api/projects/{pid}/files", params={"path": f["path"]}).status_code in (200, 204)
+    b = _compile(alice, pid)
+    assert b["status"] == "failed"
+    assert "not found" in b["error"]
+
+
+def test_worker_crash_does_not_leave_the_build_running(alice, monkeypatch):
+    import app.worker as worker
+
+    def boom(*a, **k):
+        raise RuntimeError("simulated crash before the build finished")
+
+    pid = new_sample_project(alice)["id"]
+    monkeypatch.setattr(worker, "run_build", boom)
+    b = alice.post(f"/api/projects/{pid}/builds").json()
+    drain()
+    got = alice.get(f"/api/builds/{b['id']}").json()
+    assert got["status"] == "failed" and "simulated crash" in got["error"]
+
+
+STANDALONE = "\\documentclass{article}\n\\begin{document}\nStandalone %s file.\n\\end{document}\n"
+
+
+def _compile_file(c, pid, **body):
+    r = c.post(f"/api/projects/{pid}/builds", json=body)
+    if r.status_code != 200:
+        return r
+    drain()
+    return c.get(f"/api/builds/{r.json()['id']}").json()
+
+
+def test_any_tex_file_compiles_to_its_own_pdf(alice):
+    pid = new_sample_project(alice)["id"]
+    for name in ("second.tex", "notes/third.tex"):
+        assert alice.post(f"/api/projects/{pid}/files", json={"path": name, "text": STANDALONE % name.split("/")[-1]}).status_code == 200
+    for name, stem in (("second.tex", "second"), ("notes/third.tex", "third")):
+        b = _compile_file(alice, pid, main_file=name)
+        assert b["status"] == "succeeded", b["error"] + b["log"][-1500:]
+        assert b["main_file"] == name
+        pdf = alice.get(f"/api/builds/{b['id']}/pdf").content
+        text = "".join(p.extract_text() for p in PdfReader(io.BytesIO(pdf)).pages).replace(" ", "")
+        assert f"Standalone{stem}.texfile." in text or f"Standalone{stem}.tex" in text  # its own text, not the main paper's
+        assert "AdaptiveStep-SizeControl" not in text
+        r = alice.get(f"/api/projects/{pid}/export.pdf")  # the download is named after the compiled file
+        assert f'filename="{stem}.pdf"' in r.headers["content-disposition"]
+    # the project's main file is unchanged and still compiles to its own PDF
+    assert alice.get(f"/api/projects/{pid}").json()["main_file"] != "second.tex"
+    assert _compile_file(alice, pid)["main_file"] == alice.get(f"/api/projects/{pid}").json()["main_file"]
+
+
+def test_compile_target_validation(alice):
+    pid = new_sample_project(alice)["id"]
+    main = alice.get(f"/api/projects/{pid}").json()["main_file"]
+    # a section file has no \documentclass: refused, or compiled as the main file when the client asks for the fallback
+    section = "sections/results.tex"
+    r = _compile_file(alice, pid, main_file=section)
+    assert r.status_code == 400 and "documentclass" in r.json()["detail"]
+    b = alice.post(f"/api/projects/{pid}/builds", json={"main_file": section, "fallback_to_main": True}).json()
+    assert b["main_file"] == main and b["fell_back_from"] == section
+    drain()
+    for bad in ("missing.tex", "references.bib", "../etc/passwd.tex", "/abs.tex"):
+        assert alice.post(f"/api/projects/{pid}/builds", json={"main_file": bad}).status_code == 400, bad
+    assert alice.post(f"/api/projects/{pid}/builds").status_code == 200  # no body: the main file, as before
+    drain()

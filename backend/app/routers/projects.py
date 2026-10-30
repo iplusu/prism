@@ -358,6 +358,8 @@ def export_arxiv(pid: str, user: User = Depends(current_user), db: Session = Dep
     bbl = None
     if arxiv.needs_bbl(files, p.main_file):
         b = db.get(Build, p.last_success_build_id) if p.last_success_build_id else None
+        if b is not None and b.main_file != p.main_file:
+            raise HTTPException(409, f"The last build compiled {b.main_file}, not the main file {p.main_file}: compile the main file, then export.")
         if b is None or b.source_hash != store.tree_hash(files):
             raise HTTPException(409, "Compile the paper first: arXiv needs the .bbl of a build that matches the current text.")
         bp = pdf_path(b.id).with_name("output.bbl")
@@ -375,7 +377,9 @@ def export_pdf(pid: str, user: User = Depends(current_user), db: Session = Depen
     p, _ = get_project_for(db, pid, user)
     if not p.last_success_build_id or not pdf_path(p.last_success_build_id).exists():
         raise HTTPException(404, "no successful build yet")
-    fname = re.sub(r"[^A-Za-z0-9_.-]+", "_", p.name)[:80] or "paper"
+    b = db.get(Build, p.last_success_build_id)
+    stem = (b.main_file.rsplit("/", 1)[-1].rsplit(".", 1)[0] if b else "") or p.name  # the PDF is named after the compiled file
+    fname = re.sub(r"[^A-Za-z0-9_.-]+", "_", stem)[:80] or "paper"
     return FileResponse(pdf_path(p.last_success_build_id), media_type="application/pdf", filename=f"{fname}.pdf")
 
 
