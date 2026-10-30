@@ -18,6 +18,8 @@ import { useAsync, useInterval, useMediaQuery } from "../util";
 
 type NarrowTab = "files" | "editor" | "pdf" | "ai";
 
+const AUTO_COMPILE_IDLE_MS = 2500;
+
 function loadTabs(pid: string): { tabs: string[]; active: string | null } | null {
   try {
     const raw = localStorage.getItem(`prism-tabs-${pid}`);
@@ -260,6 +262,38 @@ export default function WorkspacePage() {
   }, [compile]);
   const building = compiling || lb?.status === "queued" || lb?.status === "running";
 
+  // Auto compile (off by default; compiling costs server CPU). Once the text has been unchanged for
+  // AUTO_COMPILE_IDLE_MS and no build exists for exactly this text, compile it. Each text is tried at most
+  // once, so a failing build is not retried in a loop; the next edit tries again.
+  const [autoCompile, setAutoCompile] = useState(() => {
+    try {
+      return localStorage.getItem("prism-auto-compile") === "1";
+    } catch {
+      return false;
+    }
+  });
+  const toggleAutoCompile = useCallback(() => {
+    setAutoCompile((v) => {
+      try {
+        localStorage.setItem("prism-auto-compile", v ? "0" : "1");
+      } catch {
+        /* preference just won't persist */
+      }
+      return !v;
+    });
+  }, []);
+  const autoTried = useRef<string | null>(null);
+  const curHash = status?.current_hash;
+  const builtHash = lb?.source_hash;
+  useEffect(() => {
+    if (!autoCompile || !canEdit || !curHash || building || builtHash === curHash || autoTried.current === curHash) return;
+    const t = window.setTimeout(() => {
+      autoTried.current = curHash;
+      void compile();
+    }, AUTO_COMPILE_IDLE_MS);
+    return () => window.clearTimeout(t);
+  }, [autoCompile, canEdit, curHash, building, builtHash, compile]);
+
   // --------------------------------------------------------------- panels ---
   const sideRef = useRef<ImperativePanelHandle>(null);
   const bottomRef = useRef<ImperativePanelHandle>(null);
@@ -412,6 +446,8 @@ export default function WorkspacePage() {
         compiling={building}
         compileError={compileError}
         onCompile={() => void compile()}
+        autoCompile={autoCompile}
+        onToggleAutoCompile={toggleAutoCompile}
         members={project.data.members ?? []}
         peers={peers}
         collabStatus={collabStatus}

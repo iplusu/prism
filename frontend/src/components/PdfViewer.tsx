@@ -27,9 +27,11 @@ export default function PdfViewer({ url, downloadName, header }: Props) {
   const [baseWidth, setBaseWidth] = useState(612);
   const scroller = useRef<HTMLDivElement>(null);
 
+  // A new url (a new build) is loaded in the background: the previous document stays on screen with its
+  // scroll position, zoom and page until the new one is ready, then pages are redrawn in place.
+  const current = useRef<PDFDocumentProxy | null>(null);
   useEffect(() => {
     let cancelled = false;
-    setDoc(null);
     setError(null);
     const task = pdfjs.getDocument({ url, withCredentials: true, isEvalSupported: false });
     task.promise.then(
@@ -39,10 +41,16 @@ export default function PdfViewer({ url, downloadName, header }: Props) {
           return;
         }
         const p1 = await d.getPage(1);
+        if (cancelled) {
+          void d.destroy();
+          return;
+        }
         setBaseWidth(p1.getViewport({ scale: 1 }).width);
+        const old = current.current;
+        current.current = d;
         setDoc(d);
-        setPage(1);
-        setPageInput("1");
+        setPage((n) => Math.min(n, d.numPages));
+        if (old) window.setTimeout(() => void old.destroy(), 1000); // after the pages have switched over
       },
       (e: unknown) => {
         if (!cancelled) setError(e instanceof Error ? e.message : String(e));
@@ -53,6 +61,13 @@ export default function PdfViewer({ url, downloadName, header }: Props) {
       void task.destroy();
     };
   }, [url]);
+  useEffect(
+    () => () => {
+      void current.current?.destroy();
+      current.current = null;
+    },
+    [],
+  );
 
   // Fit-to-width follows the panel size.
   useEffect(() => {
@@ -60,7 +75,7 @@ export default function PdfViewer({ url, downloadName, header }: Props) {
     if (!el) return;
     const ro = new ResizeObserver(() => {
       const w = el.clientWidth - 32;
-      if (w > 50) setFitScale(Math.max(0.25, w / baseWidth));
+      if (w > 50) setFitScale((cur) => (Math.abs(cur - w / baseWidth) < 0.004 ? cur : Math.max(0.25, w / baseWidth)));
     });
     ro.observe(el);
     return () => ro.disconnect();
@@ -197,16 +212,25 @@ function PdfPage({ doc, number, scale, root }: { doc: PDFDocumentProxy; number: 
     if (!pg || !visible || !canvas.current || !vp) return;
     const dpr = Math.min(window.devicePixelRatio || 1, 3);
     const c = canvas.current;
-    c.width = Math.floor(vp.width * dpr);
-    c.height = Math.floor(vp.height * dpr);
-    const ctx = c.getContext("2d");
-    if (!ctx) return;
+    // Draw off screen and copy in one step: resizing the visible canvas would blank it until pdf.js is done.
+    const off = document.createElement("canvas");
+    off.width = Math.floor(vp.width * dpr);
+    off.height = Math.floor(vp.height * dpr);
+    const octx = off.getContext("2d");
+    if (!octx) return;
     let task: RenderTask | null = pg.render({
-      canvasContext: ctx,
+      canvasContext: octx,
       viewport: vp,
       transform: dpr !== 1 ? [dpr, 0, 0, dpr, 0, 0] : undefined,
     });
-    task.promise.catch(() => undefined).finally(() => (task = null));
+    task.promise.then(
+      () => {
+        c.width = off.width;
+        c.height = off.height;
+        c.getContext("2d")?.drawImage(off, 0, 0);
+      },
+      () => undefined,
+    );
     return () => task?.cancel();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pg, visible, scale]);

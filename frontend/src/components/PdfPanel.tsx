@@ -41,7 +41,7 @@ export default function PdfPanel({
   const notices = (
     <>
       {building && (
-        <div className="pdf-notice info" role="status">
+        <div className="pdf-notice info floating" role="status">
           <Spinner label="Compiling" /> {last!.status === "queued" ? "Compile queued…" : "Compiling…"}
         </div>
       )}
@@ -99,7 +99,7 @@ export default function PdfPanel({
   return (
     <div className="pdf-panel">
       {notices}
-      <PdfViewer key={ok.id} url={api.buildPdfUrl(ok.id)} downloadName={`${projectName || "paper"}.pdf`} header={header} />
+      <PdfViewer url={api.buildPdfUrl(ok.id)} downloadName={`${projectName || "paper"}.pdf`} header={header} />
     </div>
   );
 }

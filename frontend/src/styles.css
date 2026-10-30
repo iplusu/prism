@@ -1503,6 +1503,7 @@ td.row-actions {
 
 /* ------------------------------------------------------------------ pdf */
 .pdf-panel {
+  position: relative;
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -1524,6 +1525,18 @@ td.row-actions {
   gap: 8px;
   background: var(--info-soft);
   color: var(--info);
+}
+.pdf-notice.floating {
+  /* over the viewer, not in the layout: a compile must not push the pages down and back */
+  position: absolute;
+  z-index: 5;
+  top: 44px;
+  right: 14px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 3px 10px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+  pointer-events: none;
 }
 .pdf-notice.bad {
   background: var(--bad-soft);
@@ -1597,6 +1610,7 @@ td.row-actions {
   font-variant-numeric: tabular-nums;
 }
 .pdf-scroll {
+  scrollbar-gutter: stable;
   flex: 1;
   min-height: 0;
   overflow: auto;
@@ -2188,4 +2202,11 @@ td.row-actions {
   max-width: 180px;
   font-size: 12px;
   padding: 1px 4px;
+}
+.auto-compile {
+  flex: none;
+  color: var(--fg-muted);
+}
+.auto-compile.on {
+  color: var(--accent);
 }

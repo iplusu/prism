@@ -5,6 +5,7 @@ A browser-based paper-writing tool that runs on a lab server. One screen provide
 - LaTeX project and file management (create, ZIP import, upload, rename, delete, search, section outline)
 - Official conference/preprint templates (ACL, CVPR/ICCV, NeurIPS 2025, ICML 2026, arXiv): downloaded from the publishers' own URLs when a project is created, never redistributed by Prism
 - Bibliography: search arXiv and add BibTeX by arXiv id or DOI (entries are taken verbatim from arXiv / doi.org, duplicates detected)
+- Auto compile (opt-in, off by default): compiles a few seconds after you stop editing; a failing text is tried once, not in a loop
 - AI autocomplete (opt-in, off by default): greyed inline suggestion at the end of a line after a pause, Tab accepts, Esc dismisses; uses the orchestrator LLM, one request per user at a time
 - Manuscript check (no AI): undefined citations/references, duplicate labels and keys, missing figures and inputs, TODO markers, each linked to its line
 - LaTeX/BibTeX editor (CodeMirror 6: syntax highlighting, find/replace, jump to error location, autosave)

@@ -35,6 +35,8 @@ interface Props {
   compiling: boolean;
   compileError: string | null;
   onCompile: () => void;
+  autoCompile: boolean;
+  onToggleAutoCompile: () => void;
   members: Member[];
   peers: Peer[];
   collabStatus: CollabStatus | null;
@@ -118,6 +120,17 @@ export default function WorkspaceHeader(p: Props) {
           aria-describedby={p.compileError ? "compile-err" : undefined}
         >
           {p.compiling ? <Spinner label="Compiling" /> : <IconPlay />} <span>Compile</span>
+        </button>
+      )}
+      {p.canEdit && (
+        <button
+          className={`btn btn-sm btn-ghost auto-compile ${p.autoCompile ? "on" : ""}`}
+          role="switch"
+          aria-checked={p.autoCompile}
+          onClick={p.onToggleAutoCompile}
+          title="Auto compile: compile automatically a few seconds after you stop editing. Uses server CPU for every change."
+        >
+          Auto: {p.autoCompile ? "on" : "off"}
         </button>
       )}
       {p.compileError && (
