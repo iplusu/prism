@@ -48,6 +48,9 @@ class Settings(BaseSettings):
     llm_completion_timeout_seconds: float = Field(default=20.0, alias="LLM_COMPLETION_TIMEOUT_SECONDS")
     # auto | tools | json  (auto = use the capability found by the connection test)
     llm_planning_mode: str = Field(default="auto", alias="LLM_PLANNING_MODE")
+    # Hidden reasoning of the orchestrator model while planning: "auto" keeps it on for analyses, delegation and
+    # tool choice and tries it off first for plain answers/edits without external tools; "on"/"off" force it.
+    llm_planning_thinking: str = Field(default="auto", pattern="^(auto|on|off)$", alias="LLM_PLANNING_THINKING")
 
     # --- collaboration service ----------------------------------------------
     collab_enabled: bool = Field(default=False, alias="COLLAB_ENABLED")

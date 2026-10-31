@@ -370,3 +370,48 @@ def test_history_is_capped(alice, llm):
     assert len(hist) < orchestrator.HISTORY_TOTAL_CHARS + 600
     assert "question 13" in hist and "question 0" not in hist  # newest kept, oldest dropped
     assert "[shortened]" in hist
+
+
+def _thinking_off(req):
+    return (req.get("chat_template_kwargs") or {}).get("enable_thinking") is False
+
+
+def test_hidden_reasoning_is_off_first_only_for_plain_work_without_external_tools(alice, llm):
+    """llm mode (answer or edit, never an external tool) is planned with reasoning off first; Auto (which may delegate and
+    choose tools), an explicitly chosen tool, and analyses keep it on."""
+    pid = new_sample_project(alice)["id"]
+    llm.script = [tool("answer", message="Four.")]
+    _task(alice, pid, "How many sections?", mode="llm")
+    drain()
+    assert _thinking_off(llm.requests[0])
+
+    for mode, ctx in (("auto", {}), ("claude", {}), ("llm", {"scope": "project", "answer_only": True})):
+        llm.requests.clear()
+        llm.script = [tool("answer", message="ok")] if mode != "claude" else [tool("delegate", message="", delegation={"goal": "x", "executor": "claude"})]
+        _task(alice, pid, "How many sections?", mode=mode, **ctx)
+        drain()
+        assert llm.requests and not _thinking_off(llm.requests[0]), (mode, ctx)
+
+
+def test_an_invalid_quick_plan_is_repaired_with_reasoning_on(alice, llm):
+    pid = new_sample_project(alice)["id"]
+    llm.script = [tool("edit", message="x", edits=[]), tool("answer", message="Fine after repair.")]
+    tid = _task(alice, pid, "How many sections?", mode="llm")
+    drain()
+    assert _get(alice, tid)["status"] == "completed"
+    assert _thinking_off(llm.requests[0]) and not _thinking_off(llm.requests[1])
+
+
+def test_planning_thinking_can_be_forced(alice, llm):
+    pid = new_sample_project(alice)["id"]
+    set_env(LLM_PLANNING_THINKING="on")
+    llm.script = [tool("answer", message="a")]
+    _task(alice, pid, "How many sections?", mode="llm")
+    drain()
+    assert not _thinking_off(llm.requests[0])
+    llm.requests.clear()
+    set_env(LLM_PLANNING_THINKING="off")
+    llm.script = [tool("answer", message="a")]
+    _task(alice, pid, "How many sections?", mode="auto")
+    drain()
+    assert _thinking_off(llm.requests[0])
