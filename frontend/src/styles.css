@@ -2276,3 +2276,5 @@ td.row-actions {
 .review-reports { margin-top: 8px; display: flex; flex-direction: column; gap: 4px; }
 .review-one { border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; }
 .review-one summary { cursor: pointer; }
+
+.clash-list { margin: 0 0 var(--space-3, 12px); padding-left: 18px; max-height: 180px; overflow: auto; }

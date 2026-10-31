@@ -166,10 +166,11 @@ export const api = {
     request<{ path: string; sha: string }>(`${P(pid)}/files/content`, { method: "PUT", body: { path, text, base_sha } }),
   createFile: (pid: string, path: string, text = "") =>
     request<{ path: string; sha: string }>(`${P(pid)}/files`, { method: "POST", body: { path, text } }),
-  uploadFile: (pid: string, file: File, directory: string) => {
+  uploadFile: (pid: string, file: File, directory: string, overwrite = true) => {
     const form = new FormData();
     form.append("file", file);
     form.append("directory", directory);
+    form.append("overwrite", String(overwrite));
     return request<FileEntry>(`${P(pid)}/files/upload`, { method: "POST", form });
   },
   renameFile: (pid: string, src: string, dst: string) =>

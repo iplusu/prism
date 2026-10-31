@@ -112,3 +112,33 @@ def test_versions_and_restore_creates_proposal(alice):
     assert prop["origin"] == "restore" and prop["status"] == "verifying"
     # the live manuscript is untouched until the restore proposal is applied
     assert read_text(alice, pid, "sections/conclusion.tex")["text"] == "changed\n"
+
+
+def test_upload_refuses_to_replace_only_when_asked_to(alice):
+    """The web UI uploads with overwrite=false and asks the user about the 409s; the API default still replaces."""
+    from conftest import read_text
+
+    pid = new_sample_project(alice)["id"]
+    up = lambda body, **data: alice.post(f"/api/projects/{pid}/files/upload", files={"file": ("conclusion.tex", body, "text/plain")},
+                                          data={"directory": "sections", **data})
+    before = read_text(alice, pid, "sections/conclusion.tex")["text"]
+    r = up(b"NEW A", overwrite="false")
+    assert r.status_code == 409 and "already exists" in r.text
+    assert read_text(alice, pid, "sections/conclusion.tex")["text"] == before  # untouched
+    assert alice.post(f"/api/projects/{pid}/files/upload", files={"file": ("brand-new.tex", b"x", "text/plain")},
+                      data={"directory": "sections", "overwrite": "false"}).status_code == 200  # a new name is fine
+    assert up(b"NEW B", overwrite="true").status_code == 200
+    assert read_text(alice, pid, "sections/conclusion.tex")["text"] == "NEW B"
+    assert up(b"NEW C").status_code == 200  # no flag: replaces, as before
+    assert read_text(alice, pid, "sections/conclusion.tex")["text"] == "NEW C"
+
+    # the replaced content is in the history (writes alone are not committed), so it can be restored
+    from app.projects import store
+
+    log = alice.get(f"/api/projects/{pid}/versions").json()
+    snaps = [c for c in log if c.get("message", "").startswith("Before upload replaced sections/conclusion.tex")]
+    assert len(snaps) == 2, log  # before NEW B and before NEW C; the refused attempt left nothing
+    olds = {store.files_at(pid, c["revision"])["sections/conclusion.tex"].decode() for c in snaps}
+    assert olds == {before, "NEW B"}
+    assert up(b"NEW C").status_code == 200 and len([c for c in alice.get(f"/api/projects/{pid}/versions").json()
+                                                    if c.get("message", "").startswith("Before upload replaced")]) == 2  # same content: nothing to keep

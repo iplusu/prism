@@ -1,9 +1,9 @@
 import { useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
-import { api } from "../api";
+import { ApiError, api } from "../api";
 import type { FileEntry } from "../types";
 import { fmtBytes, useAction } from "../util";
 import { IconChevron, IconEdit, IconFile, IconFolder, IconPlus, IconTrash, IconUpload } from "./Icons";
-import { ConfirmButton, Empty, ErrorBox } from "./ui";
+import { ConfirmButton, Empty, ErrorBox, Modal } from "./ui";
 
 interface Dir {
   name: string;
@@ -99,24 +99,42 @@ export default function FileTree(p: Props) {
     p.onDeleted(path);
     p.onChanged();
   });
-  const up = useAction(async (files: FileList) => {
-    for (const f of Array.from(files)) await api.uploadFile(p.pid, f, dir);
-    p.onChanged();
-  });
-  const [dropOver, setDropOver] = useState<string | null>(null); // "" = whole panel, else folder path
-  const drop = useAction(async (items: Dropped[], target: string) => {
+  // Uploads never replace a file silently: the server refuses a name that exists (409), the files that clash are
+  // collected and the user decides once for all of them.
+  const [clashes, setClashes] = useState<{ file: File; at: string; path: string }[]>([]);
+  const send = useAction(async (items: Dropped[], target: string) => {
     const failed: string[] = [];
+    const clash: { file: File; at: string; path: string }[] = [];
     for (const { file, directory } of items) {
       const at = [target, directory].filter(Boolean).join("/");
       try {
-        await api.uploadFile(p.pid, file, at);
+        await api.uploadFile(p.pid, file, at, false);
       } catch (e) {
-        failed.push(`${file.name}: ${e instanceof Error ? e.message : "failed"}`);
+        if (e instanceof ApiError && e.status === 409) clash.push({ file, at, path: [at, file.name].filter(Boolean).join("/") });
+        else failed.push(`${file.name}: ${e instanceof Error ? e.message : "failed"}`);
       }
     }
     p.onChanged();
+    if (clash.length) setClashes(clash);
     if (failed.length) throw new Error(`${failed.length} of ${items.length} not uploaded — ${failed.join("; ")}`);
   });
+  const replaceAll = useAction(async () => {
+    const todo = clashes;
+    setClashes([]);
+    const failed: string[] = [];
+    for (const c of todo) {
+      try {
+        await api.uploadFile(p.pid, c.file, c.at, true);
+      } catch (e) {
+        failed.push(`${c.file.name}: ${e instanceof Error ? e.message : "failed"}`);
+      }
+    }
+    p.onChanged();
+    if (failed.length) throw new Error(`${failed.length} of ${todo.length} not replaced — ${failed.join("; ")}`);
+  });
+  const up = useAction(async (files: FileList) => send.run(Array.from(files).map((file) => ({ file, directory: "" })), dir));
+  const [dropOver, setDropOver] = useState<string | null>(null); // "" = whole panel, else folder path
+  const drop = send;
   const dropProps = (target: string | null) => ({
     onDragOver: (e: React.DragEvent) => {
       if (!p.canEdit || !e.dataTransfer.types.includes("Files")) return;
@@ -314,8 +332,33 @@ export default function FileTree(p: Props) {
           Drop to upload into <code>{dropOver ? `${dropOver}/` : "the project root"}</code>
         </div>
       )}
-      {(up.busy || drop.busy) && <div className="muted small side-note">Uploading…</div>}
-      <ErrorBox error={p.error || create.error || rename.error || del.error || up.error || drop.error} />
+      {(up.busy || drop.busy || replaceAll.busy) && <div className="muted small side-note">Uploading…</div>}
+      <ErrorBox error={p.error || create.error || rename.error || del.error || up.error || drop.error || replaceAll.error} />
+      {clashes.length > 0 && (
+        <Modal title={clashes.length === 1 ? "Replace existing file?" : `Replace ${clashes.length} existing files?`} onClose={() => setClashes([])}>
+          <p className="small">
+            {clashes.length === 1 ? "A file with this name is already in the project:" : "Files with these names are already in the project:"}
+          </p>
+          <ul className="small clash-list">
+            {clashes.slice(0, 12).map((c) => (
+              <li key={c.path}>
+                <code>{c.path}</code>
+                <span className="muted"> — {fmtBytes(p.files?.find((f) => f.path === c.path)?.size ?? 0)} now, {fmtBytes(c.file.size)} uploaded</span>
+              </li>
+            ))}
+            {clashes.length > 12 && <li className="muted">… and {clashes.length - 12} more</li>}
+          </ul>
+          <p className="small muted">Each replaced file is first saved in the project history, so the old version can be restored. The other files of this upload were already added.</p>
+          <div className="row-actions">
+            <button className="btn btn-primary" onClick={() => void replaceAll.run()}>
+              {clashes.length === 1 ? "Replace" : `Replace ${clashes.length} files`}
+            </button>
+            <button className="btn" onClick={() => setClashes([])}>
+              Keep existing
+            </button>
+          </div>
+        </Modal>
+      )}
       <div className="side-scroll">
         {p.files && p.files.length === 0 ? (
           <Empty>No files.</Empty>

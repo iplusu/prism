@@ -128,8 +128,8 @@ def create_file(pid: str, body: CreateIn, user: User = Depends(current_user), db
 
 
 @router.post("/files/upload")
-def upload(pid: str, file: UploadFile = File(...), directory: str = Form(""), user: User = Depends(current_user),
-           db: Session = Depends(get_db)):
+def upload(pid: str, file: UploadFile = File(...), directory: str = Form(""), overwrite: bool = Form(True),
+           user: User = Depends(current_user), db: Session = Depends(get_db)):
     p, _ = get_project_for(db, pid, user, "editor")
     name = (file.filename or "upload").rsplit("/", 1)[-1]
     rel = _norm(f"{directory.strip('/')}/{name}" if directory.strip("/") else name)
@@ -137,6 +137,12 @@ def upload(pid: str, file: UploadFile = File(...), directory: str = Form(""), us
     data = file.file.read(limit + 1)
     if len(data) > limit:
         raise HTTPException(413, "file too large")
+    live = _live(pid)
+    if not overwrite and rel in live:
+        raise HTTPException(409, f"{rel} already exists")  # the web UI asks before replacing; API clients overwrite by default
+    if rel in live and live[rel] != data:
+        # writes only reach the working tree; without this the replaced file would not be in the history at all
+        documents.snapshot(pid, author=user.display_name or user.username, message=f"Before upload replaced {rel}")
     _apply(pid, [Change(path=rel, content=data, expected_sha=ANY)])
     _touch(db, p)
     return {"path": rel, "size": len(data), "is_text": store.is_text(rel, data)}
