@@ -21,7 +21,12 @@ from .security.redact import redact
 log = logging.getLogger("prism.worker")
 _stop = threading.Event()
 # Job kinds are taken by separate threads so that a long AI task never holds up a compile (or the other way round).
+# Every project has its own queue per lane (jobs.claim), so the slots only cap how many projects run at once.
 LANES = [["compile"], ["verify_proposal", "apply_proposal"], ["agent"]]
+
+
+def lane_slots(s) -> list[tuple[list[str], int]]:
+    return list(zip(LANES, (s.worker_compile_slots, s.worker_proposal_slots, s.worker_agent_slots)))
 
 
 def _heartbeat_loop(job_id: str, done: threading.Event) -> None:
@@ -179,10 +184,10 @@ def main() -> None:
         db.close()
     signal.signal(signal.SIGTERM, lambda *_: _stop.set())
     signal.signal(signal.SIGINT, lambda *_: _stop.set())
-    lanes = [kinds] if kinds else LANES
+    lanes = [(kinds, 1)] if kinds else lane_slots(s)
     log.info("worker started (db=%s, lanes=%s)", "postgres" if s.is_postgres else "sqlite", lanes)
-    threads = [threading.Thread(target=_lane_loop, args=(lane, s.worker_poll_seconds), name=f"lane-{'+'.join(lane or ['all'])}")
-               for lane in lanes]
+    threads = [threading.Thread(target=_lane_loop, args=(lane, s.worker_poll_seconds), name=f"lane-{'+'.join(lane or ['all'])}-{i}")
+               for lane, n in lanes for i in range(n)]
     for th in threads:
         th.start()
     for th in threads:

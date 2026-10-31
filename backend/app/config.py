@@ -108,6 +108,11 @@ class Settings(BaseSettings):
     max_text_file_mb: int = Field(default=4, alias="PRISM_MAX_TEXT_FILE_MB")
 
     worker_poll_seconds: float = Field(default=0.5, alias="WORKER_POLL_SECONDS")
+    # How many projects' jobs of each kind the worker handles at once. A project's own jobs of one kind
+    # always run one after another; these only cap the load on the machine.
+    worker_compile_slots: int = Field(default=3, ge=1, le=32, alias="WORKER_COMPILE_SLOTS")
+    worker_proposal_slots: int = Field(default=2, ge=1, le=32, alias="WORKER_PROPOSAL_SLOTS")
+    worker_agent_slots: int = Field(default=3, ge=1, le=32, alias="WORKER_AGENT_SLOTS")
 
     @property
     def is_postgres(self) -> bool:

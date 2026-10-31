@@ -9,15 +9,18 @@ from __future__ import annotations
 
 import os
 import socket
+import threading
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select, update
+from sqlalchemy import select, text, update
 from sqlalchemy.orm import Session
 
 from .config import get_settings
 from .models import Job, TaskEvent, now
 
 WORKER_ID = f"{socket.gethostname()}:{os.getpid()}"
+_CLAIM_LOCK = threading.Lock()  # the lane threads of one process claim one at a time
+_CLAIM_ADVISORY_KEY = 7_340_001  # ... and so do several worker processes on PostgreSQL
 
 
 def enqueue(db: Session, kind: str, project_id: str, ref_id: str, payload: dict | None = None) -> Job:
@@ -28,31 +31,34 @@ def enqueue(db: Session, kind: str, project_id: str, ref_id: str, payload: dict 
 
 
 def claim(db: Session, kinds: list[str] | None = None) -> Job | None:
-    q = select(Job).where(Job.status == "queued").order_by(Job.created_at).limit(1)
-    if kinds:
-        q = q.where(Job.kind.in_(kinds))
-    if get_settings().is_postgres:
-        job = db.execute(q.with_for_update(skip_locked=True)).scalar_one_or_none()
+    """Take the oldest queued job whose project has no job of the same lane running.
+
+    Every project has its own queue: its jobs of one lane (`kinds`) run one at a time, in order,
+    while other projects' jobs are not held up by it.
+    """
+    with _CLAIM_LOCK:
+        if get_settings().is_postgres:
+            db.execute(text("SELECT pg_advisory_xact_lock(:k)"), {"k": _CLAIM_ADVISORY_KEY})
+        running = select(Job.project_id).where(Job.status == "running")
+        if kinds:
+            running = running.where(Job.kind.in_(kinds))
+        q = (select(Job).where(Job.status == "queued", Job.project_id.not_in(running))
+             .order_by(Job.created_at).limit(1))
+        if kinds:
+            q = q.where(Job.kind.in_(kinds))
+        job = db.execute(q).scalar_one_or_none()
         if job is None:
             db.rollback()
             return None
-        job.status = "running"
-        job.worker_id = WORKER_ID
-        job.started_at = job.heartbeat_at = now()
+        res = db.execute(
+            update(Job).where(Job.id == job.id, Job.status == "queued")
+            .values(status="running", worker_id=WORKER_ID, started_at=now(), heartbeat_at=now())
+        )
         db.commit()
+        if res.rowcount != 1:
+            return None
+        db.refresh(job)
         return job
-    job = db.execute(q).scalar_one_or_none()
-    if job is None:
-        return None
-    res = db.execute(
-        update(Job).where(Job.id == job.id, Job.status == "queued")
-        .values(status="running", worker_id=WORKER_ID, started_at=now(), heartbeat_at=now())
-    )
-    db.commit()
-    if res.rowcount != 1:
-        return None
-    db.refresh(job)
-    return job
 
 
 def finish(db: Session, job: Job, status: str, error: str = "") -> None:
