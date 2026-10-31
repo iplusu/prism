@@ -126,7 +126,7 @@ def _fmt(e: ValidationError) -> str:
 
 
 ANALYSIS_MIN_TOKENS = 12000
-MAX_GROWN_TOKENS = 16384
+NO_THINKING = {"chat_template_kwargs": {"enable_thinking": False}}
 
 
 def plan(provider: LLMProvider, *, request: str, context: str, forced_executor: str | None = None,
@@ -159,24 +159,26 @@ def plan(provider: LLMProvider, *, request: str, context: str, forced_executor: 
     last_err = ""
     raw = ""
     # Reasoning models spend hidden tokens before answering. An analysis (whole-project review) can use
-    # more than the default budget, so it starts bigger; any request that comes back EMPTY because the
-    # budget ran out is retried once with a larger one instead of being reported as invalid JSON.
+    # more than the default budget, so it starts bigger. A request that comes back EMPTY because the budget
+    # ran out is retried once with the model's reasoning switched off (a bigger budget would only be
+    # thought away again, minutes later) instead of being reported as invalid JSON.
     max_tokens = get_settings().llm_max_output_tokens
     if answer_only:
         max_tokens = max(max_tokens, ANALYSIS_MIN_TOKENS)
-    grew = False
+    thinking_off = False
     attempt = 0
     while attempt < 2:
         try:
-            res = provider.chat(messages, temperature=0.1, max_tokens=max_tokens, **kwargs)
+            res = provider.chat(messages, temperature=0.1, max_tokens=max_tokens, **kwargs,
+                                **({"extra_body": NO_THINKING} if thinking_off else {}))
         except LLMError:
             raise
         if res.finish_reason == "length" and not res.content.strip() and not res.tool_calls:
-            if not grew and max_tokens < MAX_GROWN_TOKENS:
-                max_tokens, grew = min(max_tokens * 3, MAX_GROWN_TOKENS), True
-                continue  # same request, bigger budget; does not use up the repair attempt
+            if not thinking_off:
+                thinking_off = True
+                continue  # same request without hidden reasoning; does not use up the repair attempt
             raise PlanError(f"the model used its whole output budget ({max_tokens} tokens, finish_reason=length) on hidden "
-                            "reasoning and produced no answer; raise LLM_MAX_OUTPUT_TOKENS or use a shorter request", "")
+                            "reasoning and produced no answer, also with reasoning switched off; raise LLM_MAX_OUTPUT_TOKENS or use a shorter request", "")
         try:
             p, raw = _parse(mode, res.content, res.tool_calls)
             if answer_only and p.action != "answer":

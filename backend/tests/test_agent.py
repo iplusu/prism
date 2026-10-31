@@ -288,17 +288,18 @@ def test_answer_only_presets_can_never_edit_or_delegate(alice, llm):
     assert read_text(alice, pid, "sections/conclusion.tex")["text"] == before
 
 
-def test_reasoning_model_running_out_of_budget_is_retried_bigger_then_reported_honestly(alice, llm):
+def test_reasoning_model_running_out_of_budget_is_retried_without_reasoning_then_reported_honestly(alice, llm):
     """A reasoning model can spend the whole output budget on hidden thinking and return nothing (finish_reason=length).
-    That is retried once with a larger budget; if it still fails the error names the real cause, not 'invalid JSON'."""
+    That is retried once with the model's reasoning switched off; if it still fails the error names the real cause, not 'invalid JSON'."""
     pid = new_sample_project(alice)["id"]
-    llm.script = [{"content": "", "finish_reason": "length"}, tool("answer", message="Fine after a bigger budget.")]
+    llm.script = [{"content": "", "finish_reason": "length"}, tool("answer", message="Fine without hidden reasoning.")]
     tid = _task(alice, pid, "How many sections?")
     drain()
     t = _get(alice, tid)
     assert t["status"] == "completed", t
-    budgets = [r["max_tokens"] for r in llm.requests]
-    assert budgets[1] == min(budgets[0] * 3, 16384) and budgets[1] > budgets[0]
+    assert "chat_template_kwargs" not in llm.requests[0]
+    assert llm.requests[1]["chat_template_kwargs"] == {"enable_thinking": False}
+    assert llm.requests[1]["max_tokens"] == llm.requests[0]["max_tokens"]
 
     llm.requests.clear()
     llm.script = [{"content": "", "finish_reason": "length"}, {"content": "", "finish_reason": "length"}]
