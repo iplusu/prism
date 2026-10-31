@@ -35,7 +35,7 @@ A browser-based paper-writing tool that runs on a lab server. One screen provide
 | Component | Technology | Location |
 |---|---|---|
 | Web/API | Python 3.12, FastAPI, SQLAlchemy, Alembic | `backend/app` |
-| Worker | Same codebase, `python -m app.worker` | `backend/app/worker.py` |
+| Worker | Same codebase, `python -m app.worker`; compiles, proposal verify/apply and AI tasks run in separate threads, so a long AI task never holds up a compile | `backend/app/worker.py` |
 | DB / job queue | PostgreSQL 17 (`FOR UPDATE SKIP LOCKED` queue). SQLite supported for development | `backend/migrations` |
 | Compilation | TeX Live + latexmk, bubblewrap sandbox | `backend/app/compile` |
 | Orchestrator LLM | OpenAI-compatible API client (provider adapter design) | `backend/app/llm` |

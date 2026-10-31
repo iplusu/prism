@@ -20,6 +20,8 @@ from .security.redact import redact
 
 log = logging.getLogger("prism.worker")
 _stop = threading.Event()
+# Job kinds are taken by separate threads so that a long AI task never holds up a compile (or the other way round).
+LANES = [["compile"], ["verify_proposal", "apply_proposal"], ["agent"]]
 
 
 def _heartbeat_loop(job_id: str, done: threading.Event) -> None:
@@ -177,10 +179,25 @@ def main() -> None:
         db.close()
     signal.signal(signal.SIGTERM, lambda *_: _stop.set())
     signal.signal(signal.SIGINT, lambda *_: _stop.set())
-    log.info("worker started (db=%s, kinds=%s)", "postgres" if s.is_postgres else "sqlite", kinds or "all")
+    lanes = [kinds] if kinds else LANES
+    log.info("worker started (db=%s, lanes=%s)", "postgres" if s.is_postgres else "sqlite", lanes)
+    threads = [threading.Thread(target=_lane_loop, args=(lane, s.worker_poll_seconds), name=f"lane-{'+'.join(lane or ['all'])}")
+               for lane in lanes]
+    for th in threads:
+        th.start()
+    for th in threads:
+        th.join()
+
+
+def _lane_loop(kinds: list[str] | None, poll: float) -> None:
     while not _stop.is_set():
-        if not run_once(kinds):
-            time.sleep(s.worker_poll_seconds)
+        try:
+            busy = run_once(kinds)
+        except Exception:  # noqa: BLE001 - a lane must not die; the others keep going
+            log.exception("lane %s: claiming a job failed", kinds)
+            busy = False
+        if not busy:
+            time.sleep(poll)
 
 
 if __name__ == "__main__":
