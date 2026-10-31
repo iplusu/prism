@@ -316,3 +316,57 @@ def test_analysis_requests_start_with_a_large_budget(alice, llm):
     _task(alice, pid, "Review this manuscript.", scope="project", answer_only=True)
     drain()
     assert llm.requests[0]["max_tokens"] >= 12000
+
+
+def _user_text(llm, i=-1):
+    return next(m["content"] for m in reversed(llm.requests[i]["messages"]) if m["role"] == "user")
+
+
+def test_planning_sees_the_earlier_conversation(alice, bob, llm):
+    """A follow-up like 'check whether the points you raised were fixed' needs the earlier chat: the planner is given
+    this user's previous requests and answers, but not the current message twice, not another user's chat, and not
+    the standalone analysis presets."""
+    pid = new_sample_project(alice)["id"]
+    alice.post(f"/api/projects/{pid}/members", json={"username": "bob", "role": "editor"})
+    llm.script = [tool("answer", message="Point A: the abstract is too long. Point B: Table 2 is unreferenced.")]
+    _task(alice, pid, "Review the abstract and tables.")
+    drain()
+    first = _user_text(llm)
+    assert "Earlier conversation" not in first  # nothing before the first request
+
+    llm.script = [tool("answer", message="BOB-SECRET-REPLY")]
+    r = bob.post(f"/api/projects/{pid}/tasks", json={"request": "BOB-SECRET-REQUEST", "mode": "auto", "context": {"scope": "project"}})
+    assert r.status_code == 200, r.text
+    drain()
+
+    llm.script = [tool("answer", message="Checked.")]
+    _task(alice, pid, "Were the points you raised fixed?")
+    drain()
+    text = _user_text(llm)
+    assert "Earlier conversation" in text
+    assert "Review the abstract and tables." in text and "Point B: Table 2 is unreferenced." in text
+    assert text.count("Were the points you raised fixed?") == 1  # only as the request, not also as history
+    assert "BOB-SECRET" not in text
+
+    llm.script = [tool("answer", message="Terms are consistent.")]
+    _task(alice, pid, "Check terminology.", scope="project", answer_only=True)
+    drain()
+    assert "Earlier conversation" not in _user_text(llm)
+
+
+def test_history_is_capped(alice, llm):
+    from app.agent import orchestrator
+
+    pid = new_sample_project(alice)["id"]
+    for i in range(14):
+        llm.script = [tool("answer", message=f"reply {i} " + "x" * 5000)]
+        _task(alice, pid, f"question {i}")
+        drain()
+    llm.script = [tool("answer", message="ok")]
+    _task(alice, pid, "latest question")
+    drain()
+    text = _user_text(llm)
+    hist = text.split("# Earlier conversation", 1)[1].split("# Request", 1)[0]
+    assert len(hist) < orchestrator.HISTORY_TOTAL_CHARS + 600
+    assert "question 13" in hist and "question 0" not in hist  # newest kept, oldest dropped
+    assert "[shortened]" in hist

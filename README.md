@@ -15,6 +15,7 @@ A browser-based paper-writing tool that runs on a lab server. One screen provide
 - Drag and drop: drop files or whole folders onto the file panel or onto a folder to upload them
 - Ask AI about a selection: select text in the editor and press "Ask AI about selection"; the selected lines become the AI request's context
 - Failed builds: a missing TeX package (`File 'x.sty' not found`) is installed automatically and the paper rebuilt (`tlmgr`, official TeX Live repository only, at most 5 packages per build; switches `TEX_PACKAGE_AUTO_INSTALL`, `ALLOW_TEX_PACKAGE_INSTALL`), with a one-click button as the fallback; other LaTeX errors offer "Fix with AI", which creates an ordinary reviewed task
+- Chat memory: each request is planned with your recent chat in the project (your requests and the answers; at most 10 messages / 9,000 characters, secrets removed, never other users' chat), so follow-ups like "were the points you raised fixed?" work. Standalone analysis presets are planned without it
 - One-click apply: proposals in the AI chat have an Apply button (verified proposals only), and the Review page applies with a single click
 - Auto compile (opt-in, off by default): compiles a few seconds after you stop editing; a failing text is tried once, not in a loop
 - AI autocomplete (opt-in, off by default): greyed inline suggestion at the end of a line after a pause, Tab accepts, Esc dismisses; uses the orchestrator LLM, one request per user at a time

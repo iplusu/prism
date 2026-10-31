@@ -31,6 +31,10 @@ from .context import build_context
 from .contract import DEFAULT_CHECKS, EXECUTORS, DelegationRequest, Edit, TaskContract
 from .policy import effective_policy, select_executor
 
+HISTORY_MAX_MESSAGES = 10
+HISTORY_ENTRY_CHARS = 2500
+HISTORY_TOTAL_CHARS = 9000
+
 
 class TaskCancelled(Exception):
     pass
@@ -72,6 +76,27 @@ class Runner:
         self.db.add(Message(project_id=self.project.id, user_id=self.task.user_id, role="assistant",
                             content=content, task_id=self.task.id, meta=meta))
         self.db.commit()
+
+    def _history(self) -> str:
+        """The user's recent chat in this project (their requests and the answers), so that a follow-up such as
+        'check whether the points you raised were fixed' has something to refer to. Standalone analysis presets
+        and the current task's own message are left out; each entry and the total are capped."""
+        rows = (self.db.query(Message)
+                .filter(Message.project_id == self.project.id, Message.user_id == self.task.user_id,
+                        Message.role.in_(("user", "assistant")))
+                .order_by(Message.id.desc()).limit(40).all())
+        keep, used = [], 0
+        for m in rows:  # newest first
+            if m.task_id == self.task.id or (m.meta or {}).get("kind") in ("error", "cancelled"):
+                continue
+            text = redact(m.content.strip())
+            if len(text) > HISTORY_ENTRY_CHARS:
+                text = text[:HISTORY_ENTRY_CHARS] + " …[shortened]"
+            if used + len(text) > HISTORY_TOTAL_CHARS or len(keep) >= HISTORY_MAX_MESSAGES:
+                break
+            keep.append(f"{'User' if m.role == 'user' else 'Assistant'}: {text}")
+            used += len(text)
+        return "\n\n".join(reversed(keep))
 
     # --------------------------------------------------------------- main ---
     def run(self) -> None:
@@ -124,7 +149,8 @@ class Runner:
                 outcome = planner.plan(provider, request=t.request, context=context,
                                        forced_executor=mode if explicit_tool else None,
                                        allow_delegate=mode != "llm" and self.policy["allow_external"] and not answer_only,
-                                       validate_edits=self._validate_edits, answer_only=answer_only)
+                                       validate_edits=self._validate_edits, answer_only=answer_only,
+                                       history="" if answer_only else self._history())
             except LLMError as e:
                 if explicit_tool:
                     self.emit("llm", f"orchestrator unavailable ({e.kind}); using a server-built contract")

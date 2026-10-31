@@ -130,7 +130,8 @@ NO_THINKING = {"chat_template_kwargs": {"enable_thinking": False}}
 
 
 def plan(provider: LLMProvider, *, request: str, context: str, forced_executor: str | None = None,
-         allow_delegate: bool = True, validate_edits=None, answer_only: bool = False) -> PlanOutcome:
+         allow_delegate: bool = True, validate_edits=None, answer_only: bool = False,
+         history: str = "") -> PlanOutcome:
     mode = planning_mode()
     sys = SYSTEM
     if forced_executor:
@@ -143,8 +144,10 @@ def plan(provider: LLMProvider, *, request: str, context: str, forced_executor: 
     if mode != "tools":
         sys += ("\n\nRespond with ONLY a JSON object matching this JSON Schema (no prose, no code fences):\n"
                 + json.dumps(PLAN_JSON_SCHEMA))
+    earlier = (f"# Earlier conversation in this project (oldest first; the request below may refer to it, e.g. "
+               f"\"apply the points you raised\")\n{history}\n\n") if history else ""
     messages = [{"role": "system", "content": sys},
-                {"role": "user", "content": f"# Project context\n{context}\n\n# Request\n{request}"}]
+                {"role": "user", "content": f"# Project context\n{context}\n\n{earlier}# Request\n{request}"}]
     kwargs: dict = {}
     if mode == "tools":
         tools = [t for t in _TOOLS if (not answer_only or t["function"]["name"] == "answer")
