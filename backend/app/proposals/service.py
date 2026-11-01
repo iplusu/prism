@@ -143,7 +143,7 @@ def verify(db: Session, prop: Proposal, should_cancel=lambda: False) -> Proposal
     report.update({
         "analysis": rep, "checks": checks,
         "build": {"candidate": b.status, "candidate_isolation": b.isolation, "base": base_build.status,
-                  "base_build_id": base_build.id, "warnings_base": wb, "warnings_candidate": wc,
+                  "base_build_id": base_build.id, "pages_base": base_build.pages, "pages_candidate": b.pages, "warnings_base": wb, "warnings_candidate": wc,
                   "blocked_reason": b.error if b.status == "blocked" else ""},
         "limitations": [
             "A successful compilation does not mean the content or the layout is correct.",

@@ -415,3 +415,18 @@ def test_planning_thinking_can_be_forced(alice, llm):
     _task(alice, pid, "How many sections?", mode="auto")
     drain()
     assert _thinking_off(llm.requests[0])
+
+
+def test_page_count_is_read_from_the_tex_log_and_never_guessed(tmp_path):
+    from app.compile.latex import count_pages
+    log = "stuff\nOutput written on main.pdf (12 pages, 345678 bytes).\nTranscript"
+    assert count_pages(log, tmp_path / "none.pdf") == 12
+    assert count_pages("Output written on main.pdf (1 page, 999 bytes).", tmp_path / "none.pdf") == 1
+    assert count_pages("no such line", tmp_path / "missing.pdf") is None  # pdfinfo cannot read it either
+
+
+def test_context_carries_the_page_note():
+    from app.agent.context import build_context
+    c = build_context({"main.tex": b"\\section{A}\nx\n"}, request="fit in 8 pages", spec={}, main_file="main.tex",
+                      budget=5000, pages="9 pages (latest successful compile, matches the current text).")
+    assert "## PDF page count\n9 pages" in c.text

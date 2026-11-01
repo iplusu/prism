@@ -101,6 +101,14 @@ export default function VerificationReport({ p }: { p: ProposalDetail }) {
                 <span className="text-bad">{b.blocked_reason}</span>
               </>
             )}
+            {(b.pages_base != null || b.pages_candidate != null) && (
+              <>
+                <span>PDF pages (base → candidate)</span>
+                <span>
+                  {b.pages_base ?? "?"} → {b.pages_candidate ?? "?"}
+                </span>
+              </>
+            )}
             {b.warnings_base && b.warnings_candidate && (
               <>
                 <span>Warnings (base → candidate)</span>

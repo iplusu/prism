@@ -105,7 +105,7 @@ class BuiltContext:
 
 
 def build_context(files: dict[str, bytes], *, request: str, spec: dict, main_file: str, budget: int,
-                  diagnostics: list[dict] | None = None) -> BuiltContext:
+                  diagnostics: list[dict] | None = None, pages: str = "") -> BuiltContext:
     parts: list[str] = []
     included: list[str] = []
     used = 0
@@ -127,6 +127,8 @@ def build_context(files: dict[str, bytes], *, request: str, spec: dict, main_fil
 
     tree = "\n".join(f"- {p}{'' if is_text(p, d) else '  (binary)'}" for p, d in sorted(files.items()))
     add(f"## Project files (main file: {main_file})\n{tree}\n", required=True)
+    if pages:
+        add(f"## PDF page count\n{pages}\n", required=True)
     ol = outline(files)
     if ol:
         add("## Outline\n" + "\n".join(f"- [{o['level']}] {o['title']}  ({o['file']}:{o['line']})" for o in ol) + "\n")

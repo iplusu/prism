@@ -84,6 +84,7 @@ def run_build(db: Session, build: Build, files: dict[str, bytes] | None = None, 
     build.log_text = log_prefix + redact(res.log[-400_000:])
     build.diagnostics = res.diagnostics[:500]
     build.has_pdf = res.pdf_path is not None
+    build.pages = res.pages
     build.error = redact(res.error)
     build.finished_at = now()
     build.duration_seconds = res.duration
@@ -167,7 +168,7 @@ def build_json(b: Build | None, include_log: bool = False) -> dict | None:
     d = {
         "id": b.id, "project_id": b.project_id, "kind": b.kind, "status": b.status, "revision": b.revision,
         "source_hash": b.source_hash, "engine": b.engine, "main_file": b.main_file, "isolation": b.isolation,
-        "exit_code": b.exit_code, "diagnostics": b.diagnostics, "has_pdf": b.has_pdf, "error": b.error,
+        "exit_code": b.exit_code, "diagnostics": b.diagnostics, "has_pdf": b.has_pdf, "pages": b.pages, "error": b.error,
         "created_at": b.created_at.isoformat() if b.created_at else None,
         "finished_at": b.finished_at.isoformat() if b.finished_at else None,
         "duration_seconds": b.duration_seconds, "proposal_id": b.proposal_id,

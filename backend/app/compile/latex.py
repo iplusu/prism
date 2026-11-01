@@ -27,6 +27,7 @@ class CompileResult:
     pdf_path: Path | None = None
     duration: float = 0.0
     error: str = ""
+    pages: int | None = None
 
 
 def tex_bin_dir() -> str | None:
@@ -178,10 +179,30 @@ def compile_project(files: dict[str, bytes], build_dir: Path, main_file: str, en
             if extra.exists():
                 shutil.copyfile(extra, build_dir / f"output.{ext}")
         return CompileResult(status="succeeded", isolation=isolation, exit_code=code, log=full_log,
-                             diagnostics=diags, pdf_path=final, duration=dur)
+                             diagnostics=diags, pdf_path=final, duration=dur, pages=count_pages(tex_log, final))
     err = next((d["message"] for d in diags if d["severity"] == "error"), "") or f"latexmk exited with code {code}"
     return CompileResult(status="failed", isolation=isolation, exit_code=code, log=full_log, diagnostics=diags,
                          duration=dur, error=err)
+
+
+_PAGES_RE = re.compile(r"Output written on .*?\((\d+) pages?\b")
+
+
+def count_pages(tex_log: str, pdf: Path) -> int | None:
+    """Page count of the compiled PDF: TeX's own "Output written on x.pdf (N pages, ...)" line, else pdfinfo.
+    None when neither says (nothing is guessed)."""
+    found = _PAGES_RE.findall(tex_log)
+    if found:
+        return int(found[-1])
+    exe = shutil.which("pdfinfo")
+    if exe:
+        try:
+            out = subprocess.run([exe, str(pdf)], capture_output=True, text=True, timeout=20).stdout
+            m = re.search(r"^Pages:\s+(\d+)", out, re.M)
+            return int(m.group(1)) if m else None
+        except (OSError, subprocess.SubprocessError):
+            return None
+    return None
 
 
 # ------------------------------------------------------------- log parsing ---

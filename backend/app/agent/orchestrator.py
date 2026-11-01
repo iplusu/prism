@@ -98,6 +98,16 @@ class Runner:
             used += len(text)
         return "\n\n".join(reversed(keep))
 
+    def _page_note(self, tree_hash: str) -> str:
+        """What the model may say about the PDF length: the page count of the latest successful compile, and
+        whether the text has changed since. It cannot see or compile the PDF itself."""
+        b = self.db.get(Build, self.project.last_success_build_id) if self.project.last_success_build_id else None
+        if b is None or not b.has_pdf or b.pages is None:
+            return ("unknown: this project has no successful compile with a recorded page count. Do not guess the length; "
+                    "tell the user to compile first if the request depends on it.")
+        fresh = "matches the current text" if b.source_hash == tree_hash else "from an OLDER version of the text (it changed since that compile)"
+        return f"{b.pages} pages (latest successful compile of {b.main_file}, {fresh})."
+
     # --------------------------------------------------------------- main ---
     def run(self) -> None:
         t = self.task
@@ -109,8 +119,10 @@ class Runner:
             self.emit("snapshot", f"base revision {snap.revision[:10]}", revision=snap.revision)
             self.files = snap.files
             last = self.db.get(Build, self.project.last_build_id) if self.project.last_build_id else None
+            self.page_note = self._page_note(snap.tree_hash)
             ctx = build_context(snap.files, request=t.request, spec=t.context_spec or {}, main_file=self.project.main_file,
-                                budget=self.settings.llm_context_chars, diagnostics=last.diagnostics if last else None)
+                                budget=self.settings.llm_context_chars, diagnostics=last.diagnostics if last else None,
+                                pages=self.page_note)
             self.emit("context", f"context: {len(ctx.text)} chars{' (truncated)' if ctx.truncated else ''}",
                       included=ctx.included[:50], truncated=ctx.truncated)
             self.check_cancel()
@@ -376,6 +388,7 @@ class Runner:
             "  - Do not run LaTeX; the server compiles and verifies your result.",
             "", "Acceptance checks the server will run: " + ", ".join(contract.acceptance_checks),
             "", f"Main file: {self.project.main_file}",
+            *([f"Current PDF length: {self.page_note}"] if getattr(self, "page_note", "") else []),
             "When finished, reply with a brief summary of the changes.",
         ]
         return "\n".join(lines)
@@ -527,7 +540,7 @@ class Runner:
         lines = [f"- {c['check']}: {c['status']}" + (f" ({c['detail']})" if c.get("detail") else "") for c in rep.get("checks", [])]
         files = ", ".join(f"{f['path']} ({f['change']})" for f in prop.files)
         report_text = (f"Files: {files}\nCandidate build: {rep.get('build', {}).get('candidate')} "
-                       f"(base build: {rep.get('build', {}).get('base')})\nChecks:\n" + "\n".join(lines)
+                       f"(base build: {rep.get('build', {}).get('base')})\nPDF pages: base {rep.get('build', {}).get('pages_base', 'unknown')} -> candidate {rep.get('build', {}).get('pages_candidate', 'unknown')} (None = not recorded)\nChecks:\n" + "\n".join(lines)
                        + f"\nAnalysis: {json.dumps(rep.get('analysis', {}))[:3000]}")
         explanation = ""
         if self.settings.llm_configured:

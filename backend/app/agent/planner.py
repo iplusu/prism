@@ -17,7 +17,6 @@ from dataclasses import dataclass
 from pydantic import ValidationError
 
 from ..config import get_settings
-from ..config import get_settings
 from ..llm.diagnostics import load_capabilities, run_connection_test
 from ..llm.provider import LLMError, LLMProvider
 from .contract import EXECUTORS, Plan, PLAN_JSON_SCHEMA
@@ -39,6 +38,8 @@ Rules:
 - Never invent citations or bibliographic data.
 - You cannot run commands; never include shell commands.
 - Reply in the language the user wrote in.
+- The context has a "PDF page count" section. Use it for page-limit requests ("fit in N pages"); you cannot see or compile the PDF,
+  so if the count is unknown or from an older version of the text, say so instead of guessing, and never claim a limit is met.
 - `message` is shown to the user: for "answer" it is the answer; otherwise a one-paragraph explanation."""
 
 _TOOLS = [

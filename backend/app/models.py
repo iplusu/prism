@@ -95,6 +95,7 @@ class Build(Base):
     log_text: Mapped[str] = mapped_column(Text, default="")
     diagnostics: Mapped[list] = mapped_column(JSON, default=list)
     has_pdf: Mapped[bool] = mapped_column(Boolean, default=False)
+    pages: Mapped[int | None] = mapped_column(Integer, nullable=True)
     error: Mapped[str] = mapped_column(Text, default="")
     created_by: Mapped[str | None] = mapped_column(String(32), nullable=True)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=now)

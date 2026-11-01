@@ -25,6 +25,7 @@ export interface Diagnostic {
 
 export interface Build {
   id: string;
+  pages?: number | null;
   project_id: string;
   kind: "main" | "proposal" | "base" | string;
   status: BuildStatus;
@@ -324,6 +325,8 @@ export interface ProposalReport {
     candidate_isolation: string;
     base: string;
     base_build_id: string;
+    pages_base?: number | null;
+    pages_candidate?: number | null;
     warnings_base: Record<string, number>;
     warnings_candidate: Record<string, number>;
     blocked_reason: string;
