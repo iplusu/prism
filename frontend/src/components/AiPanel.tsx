@@ -6,7 +6,7 @@ import { MODE_LABELS, modeLabel, relTime, useAction, useAsync } from "../util";
 import type { SelectionInfo } from "./CodeEditor";
 import { IconReview, IconRetry, IconStop } from "./Icons";
 import { EventList, executorFromEvents, isActive, LiveDot, useTaskStream } from "./TaskProgress";
-import { Badge, Empty, ErrorBox, Loading, Tag } from "./ui";
+import { Badge, CopyButton, Empty, ErrorBox, Loading, Tag } from "./ui";
 
 type Scope = TaskContextSpec["scope"];
 
@@ -332,6 +332,7 @@ function MessageItem({
         <div className="msg-meta tiny muted">
           You · {relTime(m.created_at)} · {modeLabel(meta.mode as string)}
           {ctx ? ` · ${ctx.scope === "selection" && ctx.selection ? `${ctx.path} L${ctx.selection.from_line}–${ctx.selection.to_line}` : ctx.scope === "file" ? ctx.path : "project"}` : ""}
+          <CopyButton text={m.content} />
         </div>
         <div className="msg-body pre-wrap">{m.content}</div>
         {task && <TaskCard task={task} canEdit={canEdit} onChanged={onChanged} />}
@@ -352,6 +353,7 @@ function MessageItem({
             </Tag>
           </>
         )}
+        <CopyButton text={m.content} />
       </div>
       <div className="msg-body pre-wrap">{m.content}</div>
       {Array.isArray(meta.reviews) && (
@@ -363,6 +365,7 @@ function MessageItem({
                 {r.persona && <span className="muted tiny"> · as {r.persona}</span>}
               </summary>
               <div className="pre-wrap small">{r.status === "succeeded" ? r.text : r.error || "no review"}</div>
+              {r.status === "succeeded" && <CopyButton text={r.text} label={`Copy ${r.label} review`} />}
             </details>
           ))}
         </div>

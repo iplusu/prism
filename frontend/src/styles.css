@@ -2194,7 +2194,7 @@ td.row-actions {
   color: var(--accent);
 }
 .ai-toggle.bad {
-  color: var(--danger, #b3261e);
+  color: var(--danger);
 }
 .ai-model {
   align-self: center;
@@ -2278,3 +2278,20 @@ td.row-actions {
 .review-one summary { cursor: pointer; }
 
 .clash-list { margin: 0 0 var(--space-3, 12px); padding-left: 18px; max-height: 180px; overflow: auto; }
+
+.copy-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  padding: 1px 6px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fg-muted);
+  cursor: pointer;
+}
+.msg-user .copy-btn { margin-left: 6px; }
+.copy-btn:hover, .copy-btn:focus-visible { border-color: var(--border); background: var(--bg-subtle); color: var(--fg); }
+.copy-btn.copy-failed { color: var(--danger); }
+.review-one .copy-btn { margin: 6px 0 0; }

@@ -1,6 +1,6 @@
 // Small shared presentational components.
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
-import { IconX } from "./Icons";
+import { IconCheck, IconCopy, IconX } from "./Icons";
 
 export function Spinner({ label = "Loading" }: { label?: string }) {
   return <span className="spinner" role="status" aria-label={label} />;
@@ -279,5 +279,49 @@ export function Tabs<T extends string>({
         </button>
       ))}
     </div>
+  );
+}
+
+/** Copies `text` to the clipboard and says so; if the browser refuses, it says that instead of pretending. */
+export function CopyButton({ text, label = "Copy" }: { text: string; label?: string }) {
+  const [state, setState] = useState<"idle" | "done" | "failed">("idle");
+  const timer = useRef<number | undefined>(undefined);
+  useEffect(() => () => window.clearTimeout(timer.current), []);
+  async function copy() {
+    let ok = false;
+    try {
+      await navigator.clipboard.writeText(text);
+      ok = true;
+    } catch {
+      // no clipboard API (plain http, permissions): the old selection-based copy still works from a click
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.setAttribute("readonly", "");
+      ta.style.cssText = "position:fixed;top:0;left:0;opacity:0";
+      document.body.appendChild(ta);
+      ta.select();
+      try {
+        ok = document.execCommand("copy");
+      } catch {
+        ok = false;
+      }
+      ta.remove();
+    }
+    setState(ok ? "done" : "failed");
+    window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(() => setState("idle"), 1800);
+  }
+  const shown = state === "done" ? "Copied" : state === "failed" ? "Copy failed" : label;
+  return (
+    <button
+      type="button"
+      className={`copy-btn tiny ${state === "failed" ? "copy-failed" : ""}`}
+      title={`${label} to clipboard`}
+      aria-label={`${label} to clipboard`}
+      onClick={() => void copy()}
+    >
+      {state === "done" ? <IconCheck width={12} height={12} /> : <IconCopy width={12} height={12} />}
+      <span role="status">{shown}</span>
+    </button>
   );
 }
