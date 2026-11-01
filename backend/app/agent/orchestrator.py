@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 from .. import jobs
 from ..adapters.base import AdapterError, RunSpec
 from ..adapters.registry import adapters, get_adapter
+from ..compile.latex import compile_project
 from ..config import get_settings
 from ..llm.provider import LLMError, get_provider
 from ..models import Build, Message, Project, Task, ToolRun, User, now
@@ -26,6 +27,7 @@ from ..projects import documents, store
 from ..proposals import service as proposals
 from ..security.paths import glob_match, is_protected
 from ..security.redact import redact
+from . import pages as pagelimit
 from . import planner, reviewers
 from .context import build_context
 from .contract import DEFAULT_CHECKS, EXECUTORS, DelegationRequest, Edit, TaskContract
@@ -517,9 +519,112 @@ class Runner:
                     violations.append({"path": rel, "reason": "deleted outside write scope"})
         return changes, violations
 
+    # ------------------------------------------------------- page limit ---
+    def _page_check(self, files: dict[str, bytes], tag: str):
+        """Compile `files` for their page count only (nothing is stored as a build)."""
+        d = self.settings.data_dir / "tasks" / self.task.id / f"pagecheck-{tag}"
+        try:
+            return compile_project(files, d, self.project.main_file, self.project.engine, should_cancel=self.cancelled)
+        finally:
+            shutil.rmtree(d, ignore_errors=True)
+
+    def _reach_page_limit(self, changes: dict, executor: str, message: str) -> tuple[dict, str]:
+        """When the request names a page limit and the candidate still compiles to more pages, ask again (same
+        executor) with the measured overflow, up to PAGE_LIMIT_RETRIES times. Returns the (possibly further
+        shortened) changes and a plain-language note saying what happened; the note never claims more than measured."""
+        t = self.task
+        target = pagelimit.target_pages(t.request)
+        retries = self.settings.page_limit_retries
+        if target is None or retries <= 0 or t.demo or executor == "demo" or (t.context_spec or {}).get("answer_only"):
+            return changes, ""
+        orig = self.files
+        cur = dict(changes)
+        history: list[str] = []
+        last_pages: int | None = None
+        try:
+            for rnd in range(retries + 1):
+                self.check_cancel()
+                cand = dict(orig)
+                for k, v in cur.items():
+                    if v is None:
+                        cand.pop(k, None)
+                    else:
+                        cand[k] = v
+                self.emit("page_check", f"compiling the candidate to count pages (limit {target})", round=rnd)
+                res = self._page_check(cand, str(rnd))
+                if res.status != "succeeded" or res.pages is None:
+                    why = f"the candidate did not compile to a countable PDF ({res.status}{': ' + res.error[:120] if res.error else ''})"
+                    self.emit("page_check", why, round=rnd, pages=None)
+                    history.append(f"round {rnd + 1}: {why}")
+                    last_pages = None
+                    break
+                self.emit("page_check", f"candidate is {res.pages} pages (limit {target})", round=rnd, pages=res.pages,
+                          page_lines=res.page_lines)
+                history.append(f"round {rnd + 1}: {res.pages} pages")
+                last_pages = res.pages
+                if res.pages <= target:
+                    break
+                if rnd == retries:
+                    break
+                if int(self.deadline - time.monotonic()) < 90:
+                    history.append("stopped retrying: the task time limit is nearly used up")
+                    break
+                feedback = (f"{t.request}\n\nFOLLOW-UP: the previous attempt compiles to {res.pages} pages but the limit is {target}. "
+                            f"{pagelimit.note(res.page_lines, target)}\nShorten further, cutting the least important text first, "
+                            f"until it fits {target} pages. Change nothing unrelated.")
+                self.emit("page_retry", f"still {res.pages} pages (limit {target}); asking {executor} to shorten further (retry {rnd + 1}/{retries})",
+                          round=rnd + 1, pages=res.pages)
+                self.files = cand  # the next round works on what the last one produced
+                try:
+                    more = self._shorten_round(executor, feedback, cand, rnd + 1)
+                finally:
+                    self.files = orig
+                if not more:
+                    history.append(f"round {rnd + 2}: {executor} produced no further change")
+                    break
+                for k, v in more.items():
+                    cur[k] = v
+                for k in [k for k, v in cur.items() if (v is None and k not in orig) or (v is not None and orig.get(k) == v)]:
+                    del cur[k]
+        finally:
+            self.files = orig
+        met = last_pages is not None and last_pages <= target
+        note = f"[page limit {target}] " + "; ".join(history) + (". Limit met by this candidate." if met else
+               ". The limit was NOT confirmed met; check the candidate PDF.")
+        self.emit("page_limit", note, target=target, met=met)
+        return cur, note
+
+    def _shorten_round(self, executor: str, feedback: str, cand: dict[str, bytes], rnd: int) -> dict | None:
+        """One more shortening pass on `cand` (self.files is already `cand`). Returns changes relative to `cand`."""
+        if executor == "llm":
+            if not self.settings.llm_configured:
+                return None
+            ctx = build_context(cand, request=feedback, spec={"scope": "project"}, main_file=self.project.main_file,
+                                budget=self.settings.llm_context_chars, pages="")
+            try:
+                out = planner.plan(get_provider(), request=feedback, context=ctx.text, allow_delegate=False,
+                                   validate_edits=self._validate_edits)
+            except (LLMError, planner.PlanError) as e:
+                self.emit("llm_invalid", f"page-limit retry: {e}")
+                return None
+            if out.plan.action != "edit":
+                return None
+            changes, problem = self._apply_edits(out.plan.edits)
+            return None if problem else changes
+        base = self.task.contract or {}
+        if not base:
+            return None
+        contract = TaskContract(**{**base, "goal": feedback,
+                                   "timeout_seconds": max(10, min(base.get("timeout_seconds", 600), int(self.deadline - time.monotonic())))})
+        outcome = self._run_tool(executor, contract, 100 + rnd)
+        return outcome.get("changes") if outcome["status"] == "changes" else None
+
     # -------------------------------------------------------- proposal ---
     def _propose(self, changes: dict, *, executor: str, summary: str, message: str, checks: list[str],
                  scope_ok: bool, tool_message: str = "") -> None:
+        changes, page_msg = self._reach_page_limit(changes, executor, message or tool_message)
+        if page_msg:
+            message = (message + "\n\n" if message else "") + page_msg
         self.set_status("verifying")
         prop = proposals.create(
             self.db, self.project, base_revision=self.task.base_revision, base_files=self.files, changes=changes,

@@ -115,6 +115,9 @@ class Settings(BaseSettings):
     # always run one after another; these only cap the load on the machine.
     worker_compile_slots: int = Field(default=3, ge=1, le=32, alias="WORKER_COMPILE_SLOTS")
     worker_proposal_slots: int = Field(default=2, ge=1, le=32, alias="WORKER_PROPOSAL_SLOTS")
+    # A request that names a page limit ("8 pages") is retried this many extra times, each round shortening the
+    # candidate further, while its compiled PDF is still over the limit. 0 turns it off.
+    page_limit_retries: int = Field(default=2, ge=0, le=5, alias="PAGE_LIMIT_RETRIES")
     worker_agent_slots: int = Field(default=3, ge=1, le=32, alias="WORKER_AGENT_SLOTS")
 
     @property

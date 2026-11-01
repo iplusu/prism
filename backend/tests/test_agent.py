@@ -461,3 +461,76 @@ def test_real_pdf_gives_lines_per_page(tmp_path):
     if r.status != "succeeded":
         import pytest; pytest.skip("no working TeX here: " + r.error)
     assert r.pages == 2 and r.page_lines == [10, 2] == page_line_counts(r.pdf_path)
+
+
+def _four_page_project(c):
+    pid = c.post("/api/projects", json={"name": "pages", "template": "blank"}).json()["id"]
+    src = "\\documentclass{article}\\begin{document}\nAAA\n\\newpage\nBBB\n\\newpage\nCCC\n\\newpage\nDDD\n\\end{document}\n"
+    assert c.put(f"/api/projects/{pid}/files/content", json={"path": "main.tex", "text": src}).status_code == 200
+    return pid
+
+
+def _cut(a, b):
+    return tool("edit", message="Removed a page break.", summary="Fewer pages",
+                edits=[{"path": "main.tex", "find": f"{a}\n\\newpage\n{b}", "replace": f"{a}\n{b}"}])
+
+
+def _events(c, tid):
+    return [e["type"] for e in c.get(f"/api/tasks/{tid}").json()["events"]]
+
+
+def test_page_limit_is_retried_until_the_compiled_pdf_fits(alice, llm):
+    pid = _four_page_project(alice)
+    llm.script = [_cut("AAA", "BBB"), _cut("BBB", "CCC"), {"content": "Shortened to two pages."}]
+    tid = _task(alice, pid, "2 pages 이내로 줄여줘")
+    drain()
+    t = _get(alice, tid)
+    assert t["status"] == "needs_review", t
+    prop = alice.get(f"/api/proposals/{t['proposal_id']}").json()
+    b = prop["report"]["build"]
+    assert (b["pages_base"], b["pages_candidate"]) == (4, 2)
+    kinds = _events(alice, tid)
+    assert kinds.count("page_retry") == 1 and "page_limit" in kinds
+    follow = next(json.dumps(r["messages"]) for r in llm.requests if "FOLLOW-UP" in json.dumps(r["messages"]))
+    assert "compiles to 3 pages but the limit is 2" in follow and "ESTIMATE" in follow
+
+
+def test_page_limit_not_met_is_reported_not_claimed(alice, llm):
+    pid = _four_page_project(alice)
+    # first edit helps a little; the retry round answers instead of editing, so nothing more can be done
+    llm.script = [_cut("AAA", "BBB"), tool("answer", message="I cannot shorten it more."), {"content": "Still over."}]
+    tid = _task(alice, pid, "fit it in 2 pages")
+    drain()
+    t = _get(alice, tid)
+    assert t["status"] == "needs_review", t
+    prop = alice.get(f"/api/proposals/{t['proposal_id']}").json()
+    assert prop["report"]["build"]["pages_candidate"] == 3
+    done = next(e for e in alice.get(f"/api/tasks/{tid}").json()["events"] if e["type"] == "page_limit")
+    assert "NOT confirmed met" in done["message"]
+
+
+def test_page_limit_retries_can_be_turned_off(alice, llm):
+    set_env(PAGE_LIMIT_RETRIES="0")
+    pid = _four_page_project(alice)
+    llm.script = [_cut("AAA", "BBB"), {"content": "One break removed."}]
+    tid = _task(alice, pid, "2 pages")
+    drain()
+    assert "page_check" not in _events(alice, tid)
+
+
+def test_page_limit_retry_with_an_external_tool_reuses_its_contract(alice, llm):
+    register_override("codex", FakeAdapter("codex", "drop-pagebreak"))
+    pid = _four_page_project(alice)
+    llm.script = [
+        tool("delegate", message="Delegating.", delegation={
+            "goal": "Fit the paper in 2 pages", "task_kind": "edit_text", "write_scope": ["main.tex"],
+            "acceptance_checks": ["compiles", "only_write_scope"]}),
+        {"content": "The tool shortened it."},
+    ]
+    tid = _task(alice, pid, "2 pages 이내로 줄여줘")
+    drain()
+    t = _get(alice, tid)
+    assert t["status"] == "needs_review", t["error"]
+    assert [r["attempt"] for r in t["tool_runs"]] == [1, 101]  # 4 -> 3 pages, then the retry 3 -> 2
+    assert alice.get(f"/api/proposals/{t['proposal_id']}").json()["report"]["build"]["pages_candidate"] == 2
+    assert _events(alice, tid).count("page_retry") == 1
