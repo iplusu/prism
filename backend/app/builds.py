@@ -85,6 +85,7 @@ def run_build(db: Session, build: Build, files: dict[str, bytes] | None = None, 
     build.diagnostics = res.diagnostics[:500]
     build.has_pdf = res.pdf_path is not None
     build.pages = res.pages
+    build.page_lines = res.page_lines
     build.error = redact(res.error)
     build.finished_at = now()
     build.duration_seconds = res.duration

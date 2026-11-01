@@ -106,7 +106,9 @@ class Runner:
             return ("unknown: this project has no successful compile with a recorded page count. Do not guess the length; "
                     "tell the user to compile first if the request depends on it.")
         fresh = "matches the current text" if b.source_hash == tree_hash else "from an OLDER version of the text (it changed since that compile)"
-        return f"{b.pages} pages (latest successful compile of {b.main_file}, {fresh})."
+        from . import pages as pg
+        extra = pg.note(b.page_lines, pg.target_pages(self.task.request))
+        return f"{b.pages} pages (latest successful compile of {b.main_file}, {fresh})." + (f"\n{extra}" if extra else "")
 
     # --------------------------------------------------------------- main ---
     def run(self) -> None:
@@ -540,7 +542,7 @@ class Runner:
         lines = [f"- {c['check']}: {c['status']}" + (f" ({c['detail']})" if c.get("detail") else "") for c in rep.get("checks", [])]
         files = ", ".join(f"{f['path']} ({f['change']})" for f in prop.files)
         report_text = (f"Files: {files}\nCandidate build: {rep.get('build', {}).get('candidate')} "
-                       f"(base build: {rep.get('build', {}).get('base')})\nPDF pages: base {rep.get('build', {}).get('pages_base', 'unknown')} -> candidate {rep.get('build', {}).get('pages_candidate', 'unknown')} (None = not recorded)\nChecks:\n" + "\n".join(lines)
+                       f"(base build: {rep.get('build', {}).get('base')})\nPDF pages: base {rep.get('build', {}).get('pages_base', 'unknown')} -> candidate {rep.get('build', {}).get('pages_candidate', 'unknown')} (None = not recorded); text lines on the last page: base {rep.get('build', {}).get('last_page_lines_base')} -> candidate {rep.get('build', {}).get('last_page_lines_candidate')}\nChecks:\n" + "\n".join(lines)
                        + f"\nAnalysis: {json.dumps(rep.get('analysis', {}))[:3000]}")
         explanation = ""
         if self.settings.llm_configured:

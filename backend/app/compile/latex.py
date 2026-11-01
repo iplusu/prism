@@ -28,6 +28,7 @@ class CompileResult:
     duration: float = 0.0
     error: str = ""
     pages: int | None = None
+    page_lines: list[int] | None = None
 
 
 def tex_bin_dir() -> str | None:
@@ -179,10 +180,30 @@ def compile_project(files: dict[str, bytes], build_dir: Path, main_file: str, en
             if extra.exists():
                 shutil.copyfile(extra, build_dir / f"output.{ext}")
         return CompileResult(status="succeeded", isolation=isolation, exit_code=code, log=full_log,
-                             diagnostics=diags, pdf_path=final, duration=dur, pages=count_pages(tex_log, final))
+                             diagnostics=diags, pdf_path=final, duration=dur, pages=count_pages(tex_log, final),
+                             page_lines=page_line_counts(final))
     err = next((d["message"] for d in diags if d["severity"] == "error"), "") or f"latexmk exited with code {code}"
     return CompileResult(status="failed", isolation=isolation, exit_code=code, log=full_log, diagnostics=diags,
                          duration=dur, error=err)
+
+
+def page_line_counts(pdf: Path) -> list[int] | None:
+    """Text lines on each page (pdftotext -layout; blank lines not counted). Floats count by their text only,
+    so this is a rough measure of how full a page is. None when pdftotext is missing or fails."""
+    exe = shutil.which("pdftotext")
+    if not exe:
+        return None
+    try:
+        out = subprocess.run([exe, "-layout", str(pdf), "-"], capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if out.returncode != 0:
+        return None
+    pages = out.stdout.split("\f")
+    if pages and not pages[-1].strip():
+        pages.pop()
+    # a line that is only a number is the page number in the footer, not text
+    return [sum(1 for ln in p.splitlines() if ln.strip() and not ln.strip().isdigit()) for p in pages]
 
 
 _PAGES_RE = re.compile(r"Output written on .*?\((\d+) pages?\b")

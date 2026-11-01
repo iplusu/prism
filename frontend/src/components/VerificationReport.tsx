@@ -106,6 +106,12 @@ export default function VerificationReport({ p }: { p: ProposalDetail }) {
                 <span>PDF pages (base → candidate)</span>
                 <span>
                   {b.pages_base ?? "?"} → {b.pages_candidate ?? "?"}
+                  {b.last_page_lines_candidate != null && (
+                    <span className="muted small">
+                      {" "}
+                      (text lines on the last page: {b.last_page_lines_base ?? "?"} → {b.last_page_lines_candidate})
+                    </span>
+                  )}
                 </span>
               </>
             )}

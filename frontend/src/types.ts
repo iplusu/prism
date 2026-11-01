@@ -327,6 +327,8 @@ export interface ProposalReport {
     base_build_id: string;
     pages_base?: number | null;
     pages_candidate?: number | null;
+    last_page_lines_base?: number | null;
+    last_page_lines_candidate?: number | null;
     warnings_base: Record<string, number>;
     warnings_candidate: Record<string, number>;
     blocked_reason: string;

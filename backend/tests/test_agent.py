@@ -430,3 +430,34 @@ def test_context_carries_the_page_note():
     c = build_context({"main.tex": b"\\section{A}\nx\n"}, request="fit in 8 pages", spec={}, main_file="main.tex",
                       budget=5000, pages="9 pages (latest successful compile, matches the current text).")
     assert "## PDF page count\n9 pages" in c.text
+
+
+def test_page_limit_is_read_from_the_request():
+    from app.agent.pages import target_pages
+    assert target_pages("8페이지 이내로 줄여줘") == 8
+    assert target_pages("please fit this in 6 pages") == 6
+    assert target_pages("shorten the abstract") is None
+    assert target_pages("make it 0 pages") is None
+
+
+def test_overflow_estimate_counts_the_text_beyond_the_limit():
+    from app.agent.pages import note, overflow
+    lines = [50, 52, 51, 49, 12]  # 5 pages, last one short
+    assert overflow(lines, 4) == {"pages": 5, "lines": 12, "full_page_lines": 51, "spare_lines": None}
+    assert overflow(lines, 3)["lines"] == 61
+    n = note(lines, 4)
+    assert "over by 1 page" in n and "12 text lines" in n and "ESTIMATE" in n
+    assert "already met" in note(lines, 5) and "39 lines of room" in note(lines, 5)
+    assert note(lines, None) == "" and note(None, 4) == ""
+
+
+def test_real_pdf_gives_lines_per_page(tmp_path):
+    from app.compile.latex import compile_project, page_line_counts
+    import shutil
+    if not shutil.which("pdftotext"):
+        import pytest; pytest.skip("pdftotext not installed")
+    src = b"\\documentclass{article}\\begin{document}" + b"line\\\\\n" * 10 + b"\\newpage x\\\\ y\\end{document}"
+    r = compile_project({"main.tex": src}, tmp_path, "main.tex", "pdflatex")
+    if r.status != "succeeded":
+        import pytest; pytest.skip("no working TeX here: " + r.error)
+    assert r.pages == 2 and r.page_lines == [10, 2] == page_line_counts(r.pdf_path)
