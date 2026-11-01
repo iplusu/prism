@@ -5,6 +5,26 @@
 - LaTeX 프로젝트·파일 관리(생성, ZIP 가져오기, 업로드, 이름 변경, 삭제, 검색, 섹션 개요)
 - 공식 학회·프리프린트 템플릿(ACL, CVPR/ICCV, NeurIPS 2025, ICML 2026, arXiv): 프로젝트를 만들 때 발행처의 공식 URL에서 내려받으며, Prism이 재배포하지 않습니다
 - 참고문헌: arXiv 검색, arXiv id/DOI로 BibTeX 추가(arXiv·doi.org가 주는 항목을 그대로 사용, 중복 감지)
+- PDF ↔ 원문 이동(SyncTeX): "Show in PDF"(또는 Ctrl+Alt+J)가 커서가 있는 줄을 PDF 페이지에 강조하고, PDF를 더블클릭하면 해당 줄의 원문 파일이 열립니다(include한 파일도 포함)
+- 참고문헌 검증: 모든 `.bib` 항목을 DOI(doi.org), arXiv id(arXiv API), 제목(Crossref, 이어서 OpenAlex)으로 조회해 확인됨 / 다른 저작 / 찾지 못함으로 표시합니다. "찾지 못함"은 참고용입니다(단행본과 영어가 아닌 저작은 자주 빠집니다)
+- Zotero 가져오기: 라이브러리, 그룹, 컬렉션을 `.bib`에 이미 있는 저작과 중복되지 않게 병합합니다(API 키는 요청마다 보내고 저장하지 않으며, 공개 그룹은 키가 필요 없습니다)
+- arXiv 사전 점검(Check 탭)과 마지막 컴파일의 `.bbl`을 담은 "arXiv source (.zip)" 내보내기. 규칙은 arXiv 도움말 페이지를 따랐습니다
+- 리뷰어 보고서(AI 패널, "Reviewer report…"): Codex, Claude Code, Antigravity가 각각 별도의 읽기 전용 리뷰어로 논문을 병렬로 검토합니다(각자의 샌드박스 안, 쓴 내용은 버려짐). 원하면 직접 입력한 페르소나(예: "ACL area chair")로 검토하게 할 수 있습니다. 이어서 총괄 LLM이 리뷰를 합의점, 의견 차이, 우선순위가 붙은 개선 계획이 있는 하나의 보고서로 합치며, 각 도구의 원본 리뷰도 펼쳐 볼 수 있습니다. 실패한 도구는 실패로 표시하고 채워 넣지 않습니다
+- AI 분석 프리셋(AI 패널): 용어 일관성, 빠진 인용. 서버가 답변만 허용하며 수정이나 도구 호출은 하지 못하게 합니다
+- 아무 `.tex`나 컴파일: Compile은 열려 있는 파일을 빌드하고 PDF 이름도 그 파일을 따릅니다(`\documentclass`가 없는 섹션 파일은 메인 파일을 빌드). 스위치로 항상 메인 파일만 빌드하게 할 수 있습니다
+- 드래그 앤 드롭: 파일이나 폴더를 파일 패널 또는 폴더 위에 놓아 업로드합니다. 업로드는 기존 파일을 조용히 덮어쓰지 않습니다. 이미 있는 이름은 모아서 한 번에 바꿀지 유지할지 묻고, 바뀌는 파일은 먼저 프로젝트 기록에 저장됩니다
+- 선택 영역에 대해 AI에게 묻기: 편집기에서 텍스트를 선택하고 "Ask AI about selection"을 누르면 선택한 줄이 AI 요청의 문맥이 됩니다
+- 빌드 실패: 없는 TeX 패키지(`File 'x.sty' not found`)는 자동으로 설치하고 다시 빌드합니다(`tlmgr`, 공식 TeX Live 저장소만, 빌드당 최대 5개, 스위치 `TEX_PACKAGE_AUTO_INSTALL`, `ALLOW_TEX_PACKAGE_INSTALL`). 대체 수단으로 원클릭 버튼도 있습니다. 그 밖의 LaTeX 오류에는 "Fix with AI"가 있어 검토를 거치는 일반 작업을 만듭니다
+- 계획 속도: 외부 도구를 쓰지 않는 단순 답변/수정(`llm` 모드)은 총괄 모델의 숨은 추론을 먼저 끄고(비교 실행에서 2~4배 빠름), 분석, 위임, 도구 선택에서는 켠 채로 둡니다. 잘못된 빠른 계획은 추론을 켜고 다시 만듭니다. `LLM_PLANNING_THINKING=auto|on|off`
+- 대화 기억: 각 요청은 프로젝트의 최근 대화(내 요청과 답변, 최대 10개 메시지 / 9,000자, 비밀값 제거, 다른 사용자의 대화는 제외)와 함께 계획되므로 "지적한 내용 반영됐는지 확인해 줘" 같은 후속 요청이 동작합니다. 독립 분석 프리셋은 이 기억 없이 계획됩니다
+- AI Assistant의 복사 버튼: 모든 메시지와 각 도구의 원본 리뷰를 보이는 그대로 복사할 수 있습니다. 브라우저가 클립보드를 거부하면 성공한 척하지 않고 "Copy failed"라고 표시합니다
+- **AI에게 알려 주는 PDF 페이지 수**: 컴파일마다 PDF 페이지 수를 기록합니다(TeX 로그, 없으면 `pdfinfo`). 계획 단계와 외부 도구에 최근 페이지 수와 그 뒤 텍스트가 바뀌었는지를 알려 주며, 제안 검증은 base → candidate 페이지를 보여 줍니다. 페이지 수가 없으면 추측하지 말고 모른다고 말하게 합니다
+- **페이지 한도 추정**: 요청에 한도("8 pages", "8페이지")가 있으면 그 뒤로 대략 몇 줄의 텍스트가 넘어가는지 AI에게 알려 줍니다(페이지별 `pdftotext`, 쪽번호 제외). 추정치이며 그림, 표, float 배치는 계산에 들어가지 않습니다. 검증 보고서에는 마지막 페이지의 텍스트 줄 수가 base → candidate로 나옵니다
+- **페이지 한도에 닿을 때까지 재시도**: 요청에 페이지 한도가 있으면 후보를 컴파일하고, 아직 넘으면 같은 실행자(qwen의 직접 수정 또는 선택한 도구)에게 측정된 초과분을 알려 다시 요청합니다. 최대 `PAGE_LIMIT_RETRIES`회(기본 2, 0이면 끔). 한도를 확인했는지는 결과에 그대로 적히며, 아직 넘는 후보를 달성했다고 하지 않습니다
+- **AI 문맥의 긴 섹션**: 문맥 예산보다 긴 섹션(또는 섹션 없는 파일)은 통째로 빼지 않고 약 5,000자 조각으로 잘라 넣고, 요청과 맞는 조각을 먼저 넣으며, 무언가 빠졌으면 모델에게 알립니다. 모델이 긴 논문을 얼마나 보는지는 여전히 `LLM_CONTEXT_CHARS`(기본 24000)가 정합니다. 총괄 모델은 훨씬 더 받으므로 긴 원고에서는 올리세요(운영은 400000을 씁니다. 무엇을 시험했고 무엇을 못 했는지는 `docs/verification.md` 참고)
+- 원클릭 적용: AI 채팅의 제안에 Apply 버튼이 있고(검증된 제안만), 검토 화면도 한 번 클릭으로 적용합니다
+- 자동 컴파일(선택, 기본 꺼짐): 편집을 멈춘 몇 초 뒤 컴파일합니다. 실패하는 텍스트는 반복하지 않고 한 번만 시도합니다
+- AI 자동 완성(선택, 기본 꺼짐): 잠시 멈추면 줄 끝에 흐린 인라인 제안이 나타나고 Tab으로 수락, Esc로 닫습니다. 총괄 LLM을 쓰며 사용자당 한 번에 한 요청만 보냅니다
 - 원고 검사(AI 미사용): 정의되지 않은 인용·참조, 중복 라벨·키, 없는 그림·입력 파일, TODO 표시를 줄 번호와 함께 표시
 - LaTeX/BibTeX 편집기(CodeMirror 6: 구문 강조, 검색/바꾸기, 오류 위치 이동, 자동 저장)
 - 실제 컴파일된 PDF 미리보기(TeX Live + latexmk, bubblewrap 격리, pdf.js 렌더링)
@@ -91,13 +111,13 @@ cd frontend && npm ci && npm run build && cd ..
 
 ```bash
 loginctl enable-linger $USER          # 로그인 없이도 서비스 유지 (한 번)
-./scripts/install-systemd.sh          # prism-db(선택)/collab/web/worker + 매일 03:30 백업 타이머
-systemctl --user start prism-db prism-collab prism-web prism-worker prism-backup.timer
+./scripts/install-systemd.sh          # prism-db(선택)/web/worker + 매일 03:30 백업 타이머 (.env에 COLLAB_ENABLED=true면 collab도)
+systemctl --user start prism-db prism-web prism-worker prism-backup.timer   # collab을 쓰면 prism-collab도
 systemctl --user status 'prism-*'     # 상태
 journalctl --user -u prism-web -f     # 로그
 ```
 
-`PRISM_PG_DATA`/`PRISM_PG_BIN`을 설정하면 PostgreSQL도 `prism-db` 서비스로 함께 관리합니다. 설정을 바꾼 뒤에는 `systemctl --user restart prism-web prism-worker`.
+`PRISM_PG_DATA`/`PRISM_PG_BIN`을 설정하면 PostgreSQL도 `prism-db` 서비스로 함께 관리합니다. 설정을 바꾼 뒤에는 `systemctl --user restart prism-web prism-worker`. `COLLAB_ENABLED`를 바꾼 뒤에는 `install-systemd.sh`를 다시 실행하세요. false이면 collab 유닛을 지우고 web이 collab을 부르지 않습니다.
 
 관리 명령:
 
@@ -118,7 +138,7 @@ LLM_PROVIDER=openai          # OpenAI 호환 /v1/chat/completions (vLLM, SGLang,
 LLM_BASE_URL=http://<웹앱 서버에서 접근 가능한 주소>:<포트>/v1
 LLM_MODEL=<GET /v1/models 에 나오는 정확한 모델 ID>
 LLM_API_KEY=<필요한 경우>
-LLM_CONTEXT_CHARS=24000      # 실제 서빙 중인 모델의 문맥 길이에 맞춰 조정
+LLM_CONTEXT_CHARS=24000      # 실제 서빙 중인 모델의 문맥 길이에 맞춰 조정 (긴 원고는 훨씬 크게; 운영은 400000)
 ```
 
 서버 이름만으로 포트·모델 ID·API 형식·문맥 길이를 추측하지 않습니다(배포 시에는 a5000에서 실행 중인 서버와 그 `GET /v1/models` 목록에서 주소와 모델 ID를 확인했습니다). OpenAI 호환이 아닌 API라면 `backend/app/llm/provider.py`의 `LLMProvider`를 구현해 `PROVIDERS`에 등록합니다.
