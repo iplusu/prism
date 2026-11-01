@@ -37,8 +37,17 @@ if [ -n "${PRISM_PG_DATA:-}" ]; then
   unit prism-db "Prism PostgreSQL" "" db $'KillSignal=SIGINT\nTimeoutStopSec=60'
   DB_DEP="prism-db.service"
 fi
-unit prism-collab "Prism collaboration service" "" collab "KillSignal=SIGTERM"
-unit prism-web "Prism web/API" "$DB_DEP prism-collab.service" web "TimeoutStopSec=20"
+# The collab (Yjs) service only exists when COLLAB_ENABLED is true; in solo mode web must not pull it in.
+COLLAB_DEP=""
+case "${COLLAB_ENABLED:-false}" in
+  true|True|TRUE|1|yes)
+    unit prism-collab "Prism collaboration service" "" collab "KillSignal=SIGTERM"
+    COLLAB_DEP="prism-collab.service" ;;
+  *)
+    systemctl --user disable --now prism-collab.service 2>/dev/null || true
+    rm -f "$UNIT_DIR/prism-collab.service" ;;
+esac
+unit prism-web "Prism web/API" "$DB_DEP $COLLAB_DEP" web "TimeoutStopSec=20"
 unit prism-worker "Prism worker (compile + agent tasks)" "$DB_DEP" worker $'KillMode=mixed\nTimeoutStopSec=30'
 
 cat > "$UNIT_DIR/prism-backup.service" <<UNIT
@@ -64,7 +73,7 @@ WantedBy=timers.target
 UNIT
 
 systemctl --user daemon-reload
-systemctl --user enable ${DB_DEP:+prism-db.service} prism-collab.service prism-web.service prism-worker.service prism-backup.timer
+systemctl --user enable ${DB_DEP:+prism-db.service} ${COLLAB_DEP} prism-web.service prism-worker.service prism-backup.timer
 echo "installed units in $UNIT_DIR"
-echo "start:  systemctl --user start ${DB_DEP:+prism-db} prism-collab prism-web prism-worker prism-backup.timer"
+echo "start:  systemctl --user start ${DB_DEP:+prism-db} ${COLLAB_DEP:+prism-collab} prism-web prism-worker prism-backup.timer"
 echo "logs:   journalctl --user -u prism-web -f"
