@@ -89,6 +89,28 @@ def _chunks(files: dict[str, bytes]) -> list[dict]:
     return chunks
 
 
+MAX_CHUNK_CHARS = 5000  # a section longer than this is cut into pieces, so one huge section cannot crowd out (or be dropped whole from) the context
+
+
+def _pieces(chunk: dict) -> list[dict]:
+    """Cut an over-long chunk into consecutive pieces of at most MAX_CHUNK_CHARS, preferably at blank lines.
+    Line numbers stay those of the file."""
+    if len(chunk["text"]) <= MAX_CHUNK_CHARS:
+        return [chunk]
+    lines = chunk["text"].split("\n")
+    out, cur, size, first = [], [], 0, chunk["start"]
+    for i, ln in enumerate(lines):
+        cur.append(ln)
+        size += len(ln) + 1
+        at_break = not ln.strip()
+        if size >= MAX_CHUNK_CHARS or (size >= MAX_CHUNK_CHARS * 0.6 and at_break):
+            out.append({**chunk, "start": first, "end": chunk["start"] + i, "text": "\n".join(cur)})
+            cur, size, first = [], 0, chunk["start"] + i + 1
+    if cur:
+        out.append({**chunk, "start": first, "end": chunk["end"], "text": "\n".join(cur)})
+    return out
+
+
 def _keywords(text: str) -> set[str]:
     return {w.lower() for w in _WORD.findall(text)} - _STOP
 
@@ -156,11 +178,16 @@ def build_context(files: dict[str, bytes], *, request: str, spec: dict, main_fil
 
     if scope == "project":
         kw = _keywords(request)
-        ranked = sorted(_chunks(files), key=lambda c: -len(kw & _keywords(c["text"] + " " + c["title"])))
+        pieces = [q for c in _chunks(files) for q in _pieces(c)]
+        # best keyword match first; ties keep document order (sorted() is stable)
+        ranked = sorted(pieces, key=lambda c: -len(kw & _keywords(c["text"] + " " + c["title"])))
         for c in ranked:
             if c["file"] in included:
                 continue
             block = f"## {c['file']} lines {c['start']}-{c['end']} ({c['title']})\n```\n{_numbered(c['text'], c['start'])}\n```\n"
-            if add(block, tag=f"{c['file']}:{c['start']}-{c['end']}") is False:
-                break
+            if add(block, tag=f"{c['file']}:{c['start']}-{c['end']}") is False and budget - used < 300:
+                break  # a piece that does not fit is skipped; smaller ones after it may still fit
+    if truncated:
+        parts.append("## NOTE\nThe context budget was used up: some parts of the project text are NOT shown above. "
+                     "Do not assume the shown text is the whole document; say what you could not see instead of guessing.\n")
     return BuiltContext(text="\n".join(parts), included=included, truncated=truncated)

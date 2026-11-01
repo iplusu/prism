@@ -534,3 +534,31 @@ def test_page_limit_retry_with_an_external_tool_reuses_its_contract(alice, llm):
     assert [r["attempt"] for r in t["tool_runs"]] == [1, 101]  # 4 -> 3 pages, then the retry 3 -> 2
     assert alice.get(f"/api/proposals/{t['proposal_id']}").json()["report"]["build"]["pages_candidate"] == 2
     assert _events(alice, tid).count("page_retry") == 1
+
+
+def test_a_section_longer_than_the_budget_is_still_shown_in_pieces():
+    from app.agent.context import build_context
+    paras = "\n\n".join(f"Paragraph {i}. " + " ".join(f"w{i}x{j}" for j in range(120)) for i in range(60))  # no \section: one huge chunk
+    files = {"main.tex": ("\\begin{document}\n" + paras + "\n\\end{document}\n").encode()}
+    c = build_context(files, request="shorten", spec={"scope": "project"}, main_file="main.tex", budget=24000)
+    assert "Paragraph 0." in c.text and c.truncated
+    assert len(c.text) <= 24000 + 400
+    assert any(t.startswith("main.tex:") for t in c.included) and len(c.included) >= 3
+    assert "## NOTE" in c.text and "NOT shown" in c.text  # the model is told the text is incomplete
+
+
+def test_the_piece_with_the_requested_words_is_chosen_from_a_long_section():
+    from app.agent.context import build_context
+    paras = [f"Paragraph {i}. " + " ".join(f"w{i}x{j}" for j in range(120)) for i in range(60)]
+    paras[50] += " The zebrafish protocol is described here."
+    files = {"main.tex": ("\n\n".join(paras)).encode()}
+    c = build_context(files, request="rewrite the zebrafish protocol", spec={"scope": "project"}, main_file="main.tex", budget=12000)
+    assert "zebrafish protocol is described" in c.text
+    assert c.truncated and "Paragraph 59." not in c.text  # not everything fits, yet the matching piece is there
+
+
+def test_a_short_document_is_unchanged_by_the_splitting():
+    from app.agent.context import build_context
+    files = {"main.tex": b"\\section{A}\nhello\n\\section{B}\nworld\n"}
+    c = build_context(files, request="x", spec={"scope": "project"}, main_file="main.tex", budget=24000)
+    assert not c.truncated and "## NOTE" not in c.text and "hello" in c.text and "world" in c.text
