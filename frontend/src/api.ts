@@ -242,6 +242,8 @@ export const api = {
   saveVersion: (pid: string, label: string) =>
     request<{ revision: string; label: string }>(`${P(pid)}/versions`, { method: "POST", body: { label } }),
   versionDiff: (pid: string, rev: string) => request<VersionDiff>(`${P(pid)}/versions/${enc(rev)}/diff`),
+  tidyFile: (pid: string, path: string) =>
+    request<Proposal>(`${P(pid)}/tidy`, { method: "POST", body: { path } }),
   restoreVersion: (pid: string, rev: string) =>
     request<Proposal>(`${P(pid)}/versions/${enc(rev)}/restore`, { method: "POST" }),
 

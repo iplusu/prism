@@ -379,6 +379,24 @@ def restore_version(db: Session, project: Project, revision: str, user: dict) ->
                   created_by=user["id"])
 
 
+def tidy_file(db: Session, project: Project, path: str, user: dict) -> Proposal:
+    """A proposal that re-indents one .tex file with latexindent (raises ValueError with a user-facing reason)."""
+    from .. import tidy
+    snap = documents.snapshot(project.id, author=user["name"], message="Snapshot before tidy")
+    data = snap.files.get(path)
+    if data is None or not path.endswith(".tex") or is_protected(path):
+        raise ValueError("only an existing .tex file can be tidied")
+    try:
+        new = tidy.tidy(data.decode("utf-8"))
+    except (tidy.TidyError, UnicodeDecodeError) as e:
+        raise ValueError(str(e)) from e
+    if new.encode("utf-8") == data:
+        raise ValueError("the file is already formatted the way latexindent would write it")
+    return create(db, project, base_revision=snap.revision, base_files=snap.files, changes={path: new.encode("utf-8")},
+                  origin="tidy", title=f"Tidy {path}", summary="Re-indent with latexindent. No words are meant to change; check the diff.",
+                  created_by=user["id"])
+
+
 # ------------------------------------------------------------------ views ---
 
 def proposal_json(db: Session, prop: Proposal, detail: bool = False) -> dict:

@@ -227,3 +227,28 @@ def test_marked_pdf_is_built_from_a_proposal_and_cached(alice, bob):
     assert "ZEBRAFISH" in text and "future work" in text  # the addition and the deleted words are both on the page
     assert alice.post(f"/api/proposals/{prop_id}/marked-pdf").json()["cached"] is True
     assert bob.get(f"/api/proposals/{prop_id}/marked-pdf").status_code in (403, 404)  # not a member of this project
+
+
+def test_tidy_creates_a_proposal_and_never_writes_the_file(alice):
+    import shutil
+    from app.compile.latex import tex_bin_dir
+    d = tex_bin_dir()
+    if not d or not shutil.which("latexindent", path=d):
+        pytest.skip("latexindent is not installed")
+    pid = new_sample_project(alice)["id"]
+    f = read_text(alice, pid, "sections/conclusion.tex")
+    messy = "\\begin{itemize}\n\\item one\n\\item two\n\\end{itemize}\n"
+    assert save_text(alice, pid, "sections/conclusion.tex", messy, f["sha"]).status_code == 200
+    r = alice.post(f"/api/projects/{pid}/tidy", json={"path": "sections/conclusion.tex"})
+    assert r.status_code == 200, r.text
+    prop = r.json()
+    assert prop["origin"] == "tidy" and [x["path"] for x in prop["files"]] == ["sections/conclusion.tex"]
+    assert read_text(alice, pid, "sections/conclusion.tex")["text"] == messy  # nothing written before apply
+    drain()
+    assert _get(alice, prop["id"])["status"] == "ready"
+    assert alice.post(f"/api/proposals/{prop['id']}/apply").status_code == 200
+    drain()
+    tidied = read_text(alice, pid, "sections/conclusion.tex")["text"]
+    assert "\\item one" in tidied and "\\item two" in tidied and tidied != messy and tidied.startswith("\\begin{itemize}")
+    assert alice.post(f"/api/projects/{pid}/tidy", json={"path": "sections/conclusion.tex"}).status_code == 400  # already tidy
+    assert alice.post(f"/api/projects/{pid}/tidy", json={"path": "refs.bib"}).status_code == 400  # not a .tex file

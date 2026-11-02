@@ -17,6 +17,7 @@ const ORIGIN_LABEL: Record<string, string> = {
   selection: "selected changes",
   resolution: "conflict resolution",
   restore: "version restore",
+  tidy: "tidy (latexindent)",
   merge: "3-way merge",
 };
 

@@ -1,8 +1,9 @@
+import { useNavigate } from "react-router-dom";
 import { api } from "../api";
 import type { CollabSession } from "../collab";
 import type { CompletionData } from "../editor/setup";
 import type { Diagnostic, FileEntry } from "../types";
-import { basename, fmtBytes, isImagePath } from "../util";
+import { basename, fmtBytes, isImagePath, useAction } from "../util";
 import { CollabEditor, RestEditor, type DocCache, type JumpTarget, type SaveState, type SelectionInfo } from "./CodeEditor";
 import { IconDownload, IconX } from "./Icons";
 import PdfViewer from "./PdfViewer";
@@ -47,6 +48,11 @@ function tabMarker(s: SaveState | undefined): string {
 }
 
 export default function EditorArea(p: Props) {
+  const navigate = useNavigate();
+  const tidy = useAction(async (path: string) => {
+    const prop = await api.tidyFile(p.pid, path);
+    navigate(`/p/${p.pid}/review/${prop.id}`);
+  });
   const entry = p.active ? p.files?.find((f) => f.path === p.active) : undefined;
   const fileDiags = p.active ? p.diagnostics.filter((d) => d.file && d.file.replace(/^\.\//, "") === p.active) : [];
 
@@ -130,6 +136,16 @@ export default function EditorArea(p: Props) {
         >
           Show in PDF
         </button>
+        {!p.readOnly && p.active?.endsWith(".tex") && (
+          <button
+            className="btn btn-sm btn-ghost"
+            disabled={tidy.busy}
+            title={tidy.error ?? "Re-indent this saved .tex file with latexindent. It opens as a proposal: review the diff, then apply. Save your edits first."}
+            onClick={() => void tidy.run(p.active!)}
+          >
+            {tidy.busy ? "Tidying…" : tidy.error ? "Tidy failed" : "Tidy"}
+          </button>
+        )}
         {!p.readOnly && p.ai.on && p.ai.models && (
           <select
             className="ai-model"

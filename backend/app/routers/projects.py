@@ -432,6 +432,21 @@ def restore(pid: str, rev: str, user: User = Depends(current_user), db: Session 
     return proposals.proposal_json(db, prop)
 
 
+class TidyIn(BaseModel):
+    path: str = Field(min_length=1, max_length=500)
+
+
+@router.post("/{pid}/tidy")
+def tidy_file(pid: str, body: TidyIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Offer a latexindent re-indentation of one saved .tex file as a proposal (not applied)."""
+    p, _ = get_project_for(db, pid, user, "editor")
+    try:
+        prop = proposals.tidy_file(db, p, body.path, {"id": user.id, "name": user.display_name or user.username})
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    return proposals.proposal_json(db, prop)
+
+
 # -------------------------------------------------------------- collab ---
 
 @router.get("/{pid}/collab-token")
