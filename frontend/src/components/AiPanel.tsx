@@ -141,6 +141,7 @@ export default function AiPanel(p: Props) {
   const [dRounds, setDRounds] = useState(2);
   const [dApply, setDApply] = useState(true);
   const [dPersona, setDPersona] = useState("");
+  const [dAsk, setDAsk] = useState("");
   const [dTools, setDTools] = useState<Record<string, boolean>>({});
   const dSys = useAsync(() => (discussOpen ? api.system() : Promise.resolve(null)), [discussOpen]);
   const dAll = useMemo(
@@ -151,8 +152,9 @@ export default function AiPanel(p: Props) {
   const startDiscuss = useAction(async () => {
     const t = await api.createTask(
       p.pid,
-      dFocus === "review" ? "Tool discussion: review the manuscript"
-        : dFocus === "strategy" ? "Tool discussion: plan the paper's strategy" : "Tool discussion: decide the revision direction",
+      (dFocus === "review" ? "Tool discussion: review the manuscript"
+        : dFocus === "strategy" ? "Tool discussion: plan the paper's strategy" : "Tool discussion: decide the revision direction")
+        + (dAsk.trim() ? `\n\n${dAsk.trim()}` : ""),
       "llm",
       { scope: "project", discuss: { tools: dChosen, focus: dFocus, rounds: dRounds, persona: dPersona.trim(), apply: dApply } },
     );
@@ -267,9 +269,9 @@ export default function AiPanel(p: Props) {
               })}
               <label className="field">
                 <span className="tiny muted">Topic</span>
-                <select value={dFocus} onChange={(e) => setDFocus(e.target.value as "review" | "direction" | "strategy")}>
+                <select value={dFocus} onChange={(e) => { const f = e.target.value as "review" | "direction" | "strategy"; setDFocus(f); setDApply(f !== "strategy"); }}>
                   <option value="review">Manuscript review (find weaknesses)</option>
-                  <option value="strategy">Strategy (positioning, storyline, missing evidence, order of work)</option>
+                  <option value="strategy">Strategy / experiment design (a plan, no edits by default)</option>
                   <option value="direction">Revision direction (what to change, in what order)</option>
                 </select>
               </label>
@@ -288,7 +290,11 @@ export default function AiPanel(p: Props) {
                 <input type="checkbox" checked={dApply} onChange={(e) => setDApply(e.target.checked)} /> Turn the agreed changes into a proposal (you still review and apply it)
               </label>
               <label className="field">
-                <span className="tiny muted">Role for the participants (optional)</span>
+                <span className="tiny muted">What the tools should work on (optional; they all receive it, e.g. "design the additional experiments")</span>
+                <textarea rows={3} value={dAsk} maxLength={4000} onChange={(e) => setDAsk(e.target.value)} />
+              </label>
+              <label className="field">
+                <span className="tiny muted">Role for the participants (optional; who they should act as, not the task)</span>
                 <input value={dPersona} maxLength={2000} placeholder="e.g. a JAMS referee" onChange={(e) => setDPersona(e.target.value)} />
               </label>
               <div className="row-actions">
@@ -453,7 +459,7 @@ function MessageItem({
       {Array.isArray(meta.rounds) && (
         <div className="review-reports">
           {(meta.rounds as DiscussionStatement[][]).map((stm, i) => (
-            <details key={i} className="review-one">
+            <details key={i} className="review-one" open={i === (meta.rounds as unknown[]).length - 1}>
               <summary className="small">
                 Round {i + 1}
                 <span className="muted tiny"> · {stm.map((x) => `${x.label}${x.status !== "succeeded" ? ` (${x.status})` : x.agree === true ? " ✓" : x.agree === false ? " ✗" : ""}`).join(", ")}</span>
@@ -462,6 +468,7 @@ function MessageItem({
                 <div key={x.tool} className="small">
                   <strong>{x.label}</strong>
                   <div className="pre-wrap">{x.status === "succeeded" ? x.text : x.error || x.status}</div>
+                  {x.status === "succeeded" && <CopyButton text={x.text} label={`Copy ${x.label} statement`} />}
                 </div>
               ))}
             </details>

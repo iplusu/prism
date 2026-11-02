@@ -45,7 +45,7 @@ class DiscussIn(BaseModel):
     focus: Literal["review", "direction", "strategy"] = "review"
     rounds: int = Field(default=2, ge=1, le=3)
     persona: str = Field(default="", max_length=2000)
-    apply: bool = True  # turn the agreed changes into a proposal (still verified and applied only by the user)
+    apply: bool | None = None  # turn the agreed changes into a proposal (still verified and applied only by the user); default: yes, except for a strategy discussion
 
 
 class ContextIn(BaseModel):

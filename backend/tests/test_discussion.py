@@ -166,3 +166,50 @@ def test_strategy_focus_sets_the_goal_for_tools_and_moderator(alice, llm):
     assert d["meta"]["focus"] == "strategy" and t["status"] == "completed", t["error"]
     mod = next(r["messages"][-1]["content"] for r in llm.requests if "### Round 1" in r["messages"][-1]["content"])
     assert "overall strategy for this paper" in mod
+
+
+def test_strategy_makes_no_proposal_by_default_and_asks_for_the_full_plan(alice, llm):
+    _tools()
+    pid = new_sample_project(alice)["id"]
+    before = read_text(alice, pid, "main.tex")["text"]
+    llm.script = [{"content": REPORT + "## PLAN\nExperiment A: ablation of the clip.\n" + AGREED}]
+    tid = _discuss(alice, pid, rounds=1, focus="strategy")  # apply not given
+    drain()
+    t, msgs = _msgs(alice, tid)
+    assert t["status"] == "completed", t["error"]
+    assert not any(m["meta"].get("proposal_id") for m in msgs) and read_text(alice, pid, "main.tex")["text"] == before
+    mod = next(r["messages"][-1]["content"] for r in llm.requests if "### Round 1" in r["messages"][-1]["content"])
+    assert "## PLAN" in mod and "IN FULL" in mod and "AGREED CHANGES" not in mod
+    d = next(m for m in msgs if m["meta"].get("kind") == "discussion")
+    assert "Experiment A" in d["content"]
+
+
+def test_a_strategy_discussion_can_still_ask_for_a_proposal(alice, llm):
+    _tools()
+    pid = new_sample_project(alice)["id"]
+    llm.script = [{"content": REPORT + "## PLAN\nx\n" + AGREED}]
+    _discuss(alice, pid, rounds=1, focus="strategy", apply=True)
+    drain()
+    mod = next(r["messages"][-1]["content"] for r in llm.requests if "### Round 1" in r["messages"][-1]["content"])
+    assert "AGREED CHANGES" in mod and "never text that reports results" in mod
+
+
+def test_the_users_own_words_reach_every_tool_and_the_moderator(alice, llm):
+    _tools()
+    pid = new_sample_project(alice)["id"]
+    llm.script = [{"content": REPORT + "## PLAN\nx"}]
+    r = alice.post(f"/api/projects/{pid}/tasks", json={"request": "Tool discussion: plan the paper's strategy\n\nDESIGN-THE-EXTRA-EXPERIMENTS", "mode": "llm",
+                                                       "context": {"scope": "project", "discuss": {"focus": "strategy", "rounds": 1}}})
+    assert r.status_code == 200, r.text
+    tid = r.json()["id"]
+    drain()
+    t, msgs = _msgs(alice, tid)
+    d = next(m for m in msgs if m["meta"].get("kind") == "discussion")
+    from app.agent import discussion
+
+    ask = "Tool discussion: plan the paper's strategy\n\nDESIGN-THE-EXTRA-EXPERIMENTS"
+    assert "DESIGN-THE-EXTRA-EXPERIMENTS" in discussion.opening_prompt("strategy", "", "main.tex", ask)
+    own = {"tool": "codex", "text": "t"}
+    assert "DESIGN-THE-EXTRA-EXPERIMENTS" in discussion.reply_prompt("strategy", "", "main.tex", ask, own, [own], 2, True)
+    mod = next(r["messages"][-1]["content"] for r in llm.requests if "### Round 1" in r["messages"][-1]["content"])
+    assert "DESIGN-THE-EXTRA-EXPERIMENTS" in mod

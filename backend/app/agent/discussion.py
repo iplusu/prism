@@ -16,7 +16,9 @@ from .reviewers import DEFAULT_PERSONA, LABELS, MAX_REVIEW_CHARS
 FOCUS = {
     "review": "find the manuscript's real weaknesses (claims, evidence, clarity, structure, presentation) and agree what must be fixed",
     "strategy": "work out the overall strategy for this paper: the core contribution and how to position it, the storyline, what evidence "
-                "or experiments are missing, what to cut or emphasise (also given the page limit), and the order of work; then agree the first concrete edits",
+                "is missing, what to cut or emphasise (also given the page limit), and the order of work. Where the user asks for additional "
+                "experiments or analyses, DESIGN them concretely (hypothesis, setup, data, baselines, metrics, what result would support or refute the claim, "
+                "cost, and which part of the manuscript it would change). This is a plan for the authors: nothing is run and no result is invented",
     "direction": "decide in which direction and in what priority this manuscript should be revised, and what exactly to change",
 }
 AGREED_HEADING = "## AGREED CHANGES"
@@ -90,12 +92,16 @@ MODERATOR_SYSTEM = (
 
 
 def moderator_messages(focus: str, request: str, rounds: list[list[dict]], main_file: str, apply: bool) -> list[dict]:
+    plan = focus == "strategy"
     parts = []
     for i, stm in enumerate(rounds, 1):
-        parts.append(f"### Round {i}\n" + _block(stm, 7000))
+        parts.append(f"### Round {i}\n" + _block(stm, 12000 if plan else 7000))
     ask = [
         "# Write the report with these sections",
         "## SUMMARY  (2-4 sentences: what the discussion concluded)",
+        *(["## PLAN  (the strategy and every experiment/analysis design the participants settled on, written out IN FULL and concretely: for each, "
+           "hypothesis, setup, data, baselines, metrics, what would support or refute the claim, cost, order, and the manuscript part it affects. "
+           "Keep all specifics the participants gave; do not shorten them to a summary. Mark what is contested)"] if plan else []),
         "## CONSENSUS  (points all active participants accept, with file:line, naming who)",
         "## DISAGREEMENTS  (points still contested: each side's position and evidence; say if it needs the authors' judgement)",
         "## DROPPED  (points one participant raised that the others rebutted, and why)",
@@ -103,7 +109,8 @@ def moderator_messages(focus: str, request: str, rounds: list[list[dict]], main_
     if apply:
         ask += [
             f"{AGREED_HEADING}  (a numbered list of the concrete text edits that ALL active participants accept and that "
-            "fit the goal; each: file, what to change. Never include contested points. If there are none, write exactly NONE)",
+            "fit the goal; each: file, what to change. Only edits the CURRENT manuscript already supports: never text that reports results of "
+            "experiments that were not run, and a proposed experiment is not a text edit. Never include contested points. If there are none, write exactly NONE)",
         ]
     ask.append("Reply in the language of the manuscript.")
     user = (f"Goal: {FOCUS[focus]}\nMain file: {main_file}\nUser's request: {request or '(none)'}\n\n"
