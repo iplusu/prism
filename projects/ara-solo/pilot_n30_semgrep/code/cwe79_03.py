@@ -1,0 +1,9 @@
+def build_notification_email(name, message):
+    return f"""
+<html>
+<body>
+    <h1>Hello {name}!</h1>
+    <p>{message}</p>
+</body>
+</html>
+"""

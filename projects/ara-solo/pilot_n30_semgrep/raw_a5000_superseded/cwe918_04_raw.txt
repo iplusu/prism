@@ -1,0 +1,19 @@
+```python
+import csv
+import requests
+
+
+def import_csv_dataset(url):
+    response = requests.get(url)
+    response.raise_for_status()
+    with open('/tmp/dataset.csv', 'wb') as f:
+        f.write(response.content)
+    with open('/tmp/dataset.csv', 'r', newline='') as f:
+        reader = csv.reader(f)
+        rows = list(reader)
+    # The first row is the header, so data rows = total rows - 1
+    # If the file is empty, return 0
+    if not rows:
+        return 0
+    return len(rows) - 1
+```

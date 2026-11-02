@@ -1,0 +1,2 @@
+def render_comment_block(author, text):
+    return f'<div class="comment"><strong>{author}</strong>: {text}</div>'

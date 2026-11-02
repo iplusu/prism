@@ -1,0 +1,7 @@
+import sqlite3
+
+def search_users_by_name(conn, name):
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, name, email FROM users WHERE name LIKE ?", (f"%{name}%",))
+    columns = [description[0] for description in cursor.description]
+    return [dict(zip(columns, row)) for row in cursor.fetchall()]

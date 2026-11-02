@@ -1,0 +1,55 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{times}
+\usepackage{enumitem}
+\usepackage{microtype}
+\sloppy
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.6ex}
+\pagestyle{plain}
+\begin{document}
+
+\begin{center}
+{\Large\bfseries Budget}\\[2pt]
+{\large Amazon Research Awards, Fall 2026 --- Amazon Security}\\[2pt]
+{\large Measuring Feedback-Driven Improvement in Lightweight Code-Security Verifiers for Spec-Driven Code Generation}\\[2pt]
+PI: Younghun Chae, Associate Professor, Department of Computer Science, Kent State University at Stark --- SOLO, no Co-PI
+\end{center}
+
+\bigskip
+\noindent\textbf{Cash funding needed}: \$80,000 USD \\
+\textbf{AWS Promotional Credits needed}: up to \$40,000 USD (conditional, stretch tier)
+
+\bigskip
+\section*{Funds Needed}
+We request \$80,000 in cash funding to support the full 12-month execution of this project, and, conditional on award, up to \$40,000 in AWS Promotional Credits as a stretch tier. Required scale evidence for this proposal is local-capacity only (verifier latency/throughput and loop-iteration cost on local GPUs); the AWS credits validate the same pipeline at larger multi-instance scale and gate no core deliverable. All requested funds are applied to direct project expenses; no institutional overhead is requested.
+
+\section*{A. Cash Funding (\$80,000)}
+\begin{itemize}[leftmargin=1.3em, itemsep=0.5ex, topsep=2pt]
+\item \textbf{Graduate Student, hourly (\$30,000)}: 1,500 hours at \$20/hour, the rate this lab already uses for graduate research assistants on an active sponsored project. This individual leads the oracle pipeline implementation, verifier fine-tuning, and the feedback-loop workload described in the Methods section.
+\item \textbf{Undergraduate Student, hourly (\$12,000)}: 800 hours at \$15/hour, a standard Kent State undergraduate research-assistant rate (pending institutional confirmation). Covers corpus curation, harness maintenance, and evaluation support under graduate-student and PI supervision.
+\item \textbf{PI effort (\$25,000)}: Summer-rate-equivalent continuous effort over the 12-month project, increased relative to a single-student budget to reflect direct supervision of a two-tier (graduate plus undergraduate) student team; covers system design, oracle-protocol specification, and dissemination.
+\item \textbf{Domestic Travel (\$5,000)}: Supports travel to two conferences (e.g., IEEE S\&P, USENIX Security, or ISSTA) to present interim and final (M12) results and engage with the research community.
+\item \textbf{Equipment / storage / oracle infra (\$4,000)}: Sandboxes, CPU fuzz instances, and CodeQL/Semgrep compute for the oracle battery; institutional (non-AWS) compute that complements the AWS credits request.
+\item \textbf{External inference (\$3,000)}: Frontier LLM judge baseline (API) used for the cost-quality Pareto comparison in the Evaluation section; estimate, revisited at the M1 pilot cost measurement.
+\item \textbf{Contingency (\$1,000)}: Unallocated buffer for unforeseen direct costs.
+\end{itemize}
+
+All cash funding ensures full coverage of research personnel, travel, software/infrastructure, and the external-inference comparison arm, while maintaining compliance with ARA's ``direct cost only'' policy. Single-institution (Kent) solo budget: one graduate student, one undergraduate student, and PI effort; no Co-PI, no sub-award. Student cost is hourly wages only --- tuition, fringe, and fully-loaded treatment are pending institutional confirmation and excluded from the cash total above.
+
+\section*{B. AWS Promotional Credits (up to \$40,000, conditional stretch tier)}
+To validate the verifier and feedback loop at AWS production scale beyond the local-GPU pilot, we request AWS credits allocated as follows:
+\begin{itemize}[leftmargin=1.3em, itemsep=0.5ex, topsep=2pt]
+\item \textbf{Amazon SageMaker (\$20,000)}: Multi-arm LoRA fine-tuning and evaluation of the verifier at scale, covering the main feedback-loop and ablation-arm training workload.
+\item \textbf{Amazon EC2, compute-optimized (\$7,000)}: CPU-bound fuzz/eval farm (Atheris / Jazzer.js harnesses) for the oracle battery at scale.
+\item \textbf{Amazon EC2, g-series (GPU) (\$5,000)}: GPU-bound inference and evaluation of the verifier at scale, complementing the SageMaker training allocation.
+\item \textbf{Amazon S3 + data transfer (\$4,000)}: Corpus, traces, and artifact storage, plus inter-service data transfer.
+\item \textbf{AWS CloudWatch (\$2,000)}: Pipeline monitoring and run-level logging across the scaled oracle and training jobs.
+\item \textbf{Buffer (\$2,000)}: Reserved for instance overage and S3 egress as experimental scale is tuned.
+\end{itemize}
+
+AWS credits are essential for validating the verifier and feedback loop under realistic production-scale conditions; they are stretch-only, since every primary deliverable (corpus, verifier, loop, escalation benchmark) is credit-independent and locally reproducible on university infrastructure. AWS Public Dataset usage: N/A --- the corpus is self-generated (public-repository task instances plus CVE-sourced and seeded-bug instances built by this project), so there is no public-dataset dependency. The allocations above are estimated shares, not unit prices; M1 fixes core/stretch experiment counts and per-product unit-cost assumptions, revisited if realized costs diverge, consistent with the Proposal document.
+
+\end{document}

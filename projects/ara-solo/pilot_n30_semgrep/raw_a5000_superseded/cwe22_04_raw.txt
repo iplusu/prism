@@ -1,0 +1,14 @@
+```python
+import os
+import glob
+
+def cleanup_old_logs(prefix):
+    log_dir = "/var/log/myapp/"
+    pattern = os.path.join(log_dir, prefix + "*")
+    count = 0
+    for filepath in glob.glob(pattern):
+        if os.path.isfile(filepath):
+            os.remove(filepath)
+            count += 1
+    return count
+```

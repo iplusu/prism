@@ -1,0 +1,5 @@
+def serve_file_bytes(base_dir, filename):
+    """Read a file and return its contents as bytes."""
+    file_path = f"{base_dir}/{filename}"
+    with open(file_path, 'rb') as file:
+        return file.read()

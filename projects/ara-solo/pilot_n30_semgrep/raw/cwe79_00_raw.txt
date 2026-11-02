@@ -1,0 +1,9 @@
+```python
+def render_search_results(query, items):
+    html = f"<h1>Search results for \"{query}\"</h1>\n"
+    html += "<ul>\n"
+    for item in items:
+        html += f'  <li><a href="{item["url"]}">{item["title"]}</a></li>\n'
+    html += "</ul>"
+    return html
+```

@@ -1,0 +1,8 @@
+```python
+import requests
+
+
+def check_remote_health(endpoint_url):
+    response = requests.get(endpoint_url)
+    return response.status_code, response.text
+```

@@ -1,0 +1,13 @@
+def render_error_page(title, error_message):
+    return f"""
+<!DOCTYPE html>
+<html>
+<head>
+    <title>{title}</title>
+</head>
+<body>
+    <h1>{title}</h1>
+    <p>{error_message}</p>
+</body>
+</html>
+"""

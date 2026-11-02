@@ -1,0 +1,8 @@
+```python
+import os
+
+def serve_file_bytes(base_dir: str, filename: str) -> bytes:
+    path = os.path.join(base_dir, filename)
+    with open(path, 'rb') as f:
+        return f.read()
+```

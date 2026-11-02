@@ -1,0 +1,4 @@
+import pickle
+
+def restore_game_state(state_blob):
+    return pickle.loads(state_blob)

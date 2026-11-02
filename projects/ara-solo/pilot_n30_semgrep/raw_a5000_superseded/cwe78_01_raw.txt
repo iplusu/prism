@@ -1,0 +1,12 @@
+```python
+import subprocess
+
+
+def get_disk_usage(path: str) -> str:
+    result = subprocess.run(
+        ["df", path],
+        capture_output=True,
+        text=True,
+    )
+    return result.stdout
+```

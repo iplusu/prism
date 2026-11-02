@@ -1,0 +1,27 @@
+import subprocess
+import platform
+
+def ping_host(host):
+    """
+    Ping a host and return True if it responds, False otherwise.
+    
+    Args:
+        host (str): The host to ping
+        
+    Returns:
+        bool: True if host responded, False otherwise
+    """
+    # Determine the ping command based on the operating system
+    if platform.system().lower() == "windows":
+        # Windows ping command
+        cmd = ["ping", "-n", "1", "-w", "1000", host]
+    else:
+        # Unix/Linux/Mac ping command
+        cmd = ["ping", "-c", "1", "-W", "1", host]
+    
+    try:
+        # Run the ping command and check the return code
+        result = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+        return result.returncode == 0
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return False

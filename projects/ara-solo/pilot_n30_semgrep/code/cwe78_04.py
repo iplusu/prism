@@ -1,0 +1,15 @@
+import subprocess
+import os
+
+def gzip_compress_file(src):
+    """Compress a file using the system gzip command and return the path of the compressed file."""
+    if not os.path.exists(src):
+        raise FileNotFoundError(f"Source file {src} does not exist")
+    
+    # Create the compressed file path by appending .gz extension
+    compressed_path = src + ".gz"
+    
+    # Run the gzip command
+    subprocess.run(["gzip", src], check=True)
+    
+    return compressed_path

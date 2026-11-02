@@ -1,0 +1,12 @@
+```python
+import sqlite3
+
+
+def search_users_by_name(conn: sqlite3.Connection, name: str) -> list[dict]:
+    cursor = conn.execute(
+        "SELECT id, name, email FROM users WHERE name = ?",
+        (name,),
+    )
+    columns = ["id", "name", "email"]
+    return [dict(zip(columns, row)) for row in cursor.fetchall()]
+```

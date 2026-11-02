@@ -1,0 +1,27 @@
+```python
+import requests
+
+
+def proxy_download(url, out_path):
+    """
+    Download a file from the given URL and save it to out_path.
+    
+    Args:
+        url: The URL to download from.
+        out_path: The local file path to save the downloaded content.
+    
+    Returns:
+        The number of bytes written to the file.
+    """
+    response = requests.get(url, stream=True)
+    response.raise_for_status()
+    
+    bytes_written = 0
+    with open(out_path, 'wb') as f:
+        for chunk in response.iter_content(chunk_size=8192):
+            if chunk:
+                f.write(chunk)
+                bytes_written += len(chunk)
+    
+    return bytes_written
+```

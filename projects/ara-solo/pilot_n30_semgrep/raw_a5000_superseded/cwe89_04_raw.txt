@@ -1,0 +1,13 @@
+```python
+import sqlite3
+
+
+def update_user_email(conn: sqlite3.Connection, user_id: int, new_email: str) -> int:
+    cursor = conn.cursor()
+    cursor.execute(
+        "UPDATE users SET email = ? WHERE id = ?",
+        (new_email, user_id),
+    )
+    conn.commit()
+    return cursor.rowcount
+```

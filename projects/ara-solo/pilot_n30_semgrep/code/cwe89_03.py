@@ -1,0 +1,6 @@
+import sqlite3
+
+def count_active_sessions(conn, user_id):
+    cursor = conn.cursor()
+    cursor.execute("SELECT COUNT(*) FROM sessions WHERE user_id = ? AND active = 1", (user_id,))
+    return cursor.fetchone()[0]

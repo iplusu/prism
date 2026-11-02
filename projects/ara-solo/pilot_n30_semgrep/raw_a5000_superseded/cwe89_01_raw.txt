@@ -1,0 +1,21 @@
+```python
+import sqlite3
+
+
+def get_orders_for_customer(conn: sqlite3.Connection, customer_id: int) -> list[dict]:
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT id, customer_id, total, status FROM orders WHERE customer_id = ?",
+        (customer_id,),
+    )
+    rows = cursor.fetchall()
+    return [
+        {
+            "id": row[0],
+            "customer_id": row[1],
+            "total": row[2],
+            "status": row[3],
+        }
+        for row in rows
+    ]
+```

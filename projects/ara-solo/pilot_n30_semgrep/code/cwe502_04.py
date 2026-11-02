@@ -1,0 +1,4 @@
+import pickle
+
+def deserialize_task_request(request_blob):
+    return pickle.loads(request_blob)

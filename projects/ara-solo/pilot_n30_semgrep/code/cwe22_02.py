@@ -1,0 +1,8 @@
+import configparser
+import os
+
+def read_config_value(config_file, key):
+    config_path = os.path.join("/etc/myapp/configs/", config_file)
+    config = configparser.ConfigParser()
+    config.read(config_path)
+    return config.get("main", key)

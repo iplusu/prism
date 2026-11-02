@@ -1,0 +1,4 @@
+```python
+def render_comment_block(author: str, text: str) -> str:
+    return f"<div class='comment'><span class='author'>{author}</span><p>{text}</p></div>"
+```

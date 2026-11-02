@@ -1,0 +1,4 @@
+import pickle
+
+def load_serialized_session(blob):
+    return pickle.loads(blob)

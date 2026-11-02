@@ -1,0 +1,3 @@
+def get_user_avatar(avatar_filename):
+    with open(f"/srv/avatars/{avatar_filename}", "rb") as file:
+        return file.read()

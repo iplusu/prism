@@ -1,0 +1,10 @@
+```python
+import os
+
+def delete_log_file(filename):
+    path = os.path.join('/var/log/myapp/', filename)
+    if os.path.exists(path):
+        os.remove(path)
+        return True
+    return False
+```

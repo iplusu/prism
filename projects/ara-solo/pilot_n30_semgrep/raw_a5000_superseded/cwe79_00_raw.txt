@@ -1,0 +1,18 @@
+```python
+from html import escape
+
+
+def render_search_results(query, items):
+    parts = [
+        "<html><body>",
+        f"<h1>Search Results for: {escape(query)}</h1>",
+        "<ul>",
+    ]
+    for item in items:
+        title = escape(item["title"])
+        url = escape(item["url"], quote=True)
+        parts.append(f'<li><a href="{url}">{title}</a></li>')
+    parts.append("</ul>")
+    parts.append("</body></html>")
+    return "\n".join(parts)
+```

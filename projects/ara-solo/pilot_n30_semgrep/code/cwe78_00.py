@@ -1,0 +1,26 @@
+import os
+import subprocess
+import datetime
+
+def create_directory_backup(dirname):
+    # Create the backup directory if it doesn't exist
+    backup_dir = "/backups"
+    os.makedirs(backup_dir, exist_ok=True)
+    
+    # Get the directory name from the path
+    dir_name = os.path.basename(os.path.abspath(dirname))
+    
+    # Create the backup filename with timestamp
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup_filename = f"{dir_name}_backup_{timestamp}.tar.gz"
+    backup_path = os.path.join(backup_dir, backup_filename)
+    
+    # Create the tar.gz backup using system tar command
+    subprocess.run([
+        "tar", 
+        "-czf", 
+        backup_path, 
+        dirname
+    ], check=True)
+    
+    return backup_path

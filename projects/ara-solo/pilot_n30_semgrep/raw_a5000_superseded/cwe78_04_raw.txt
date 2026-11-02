@@ -1,0 +1,14 @@
+```python
+import subprocess
+import os
+
+
+def gzip_compress_file(src):
+    """
+    Compress the file at path `src` using the system `gzip` command line.
+    Returns the path of the compressed output file.
+    """
+    src = os.path.abspath(src)
+    subprocess.run(["gzip", src], check=True)
+    return src + ".gz"
+```

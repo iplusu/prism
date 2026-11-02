@@ -1,0 +1,12 @@
+import sqlite3
+
+def get_orders_for_customer(conn, customer_id):
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT id, customer_id, total, status 
+        FROM orders 
+        WHERE customer_id = ?
+    """, (customer_id,))
+    
+    columns = [description[0] for description in cursor.description]
+    return [dict(zip(columns, row)) for row in cursor.fetchall()]

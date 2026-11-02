@@ -1,0 +1,7 @@
+import requests
+
+def get_weather_forecast(city):
+    url = f"https://api.weather.example.com/v1/forecast?city={city}"
+    response = requests.get(url)
+    response.raise_for_status()
+    return response.json()

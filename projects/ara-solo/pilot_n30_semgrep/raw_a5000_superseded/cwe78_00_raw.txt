@@ -1,0 +1,35 @@
+```python
+import os
+import subprocess
+import shutil
+
+
+def create_directory_backup(dirname):
+    """
+    Create a gzip-compressed tar backup of the given directory in /backups/.
+    
+    Args:
+        dirname: Path to the directory to back up.
+        
+    Returns:
+        Path to the created .tar.gz archive.
+    """
+    backups_dir = "/backups"
+    os.makedirs(backups_dir, exist_ok=True)
+    
+    basename = os.path.basename(os.path.normpath(dirname))
+    archive_path = os.path.join(backups_dir, f"{basename}.tar.gz")
+    
+    # Use tar to create a gzip-compressed archive
+    # -c: create archive
+    # -z: gzip compress
+    # -f: output file
+    # -C: change to directory before operating
+    # dirname: the directory to archive
+    subprocess.run(
+        ["tar", "-czf", archive_path, "-C", os.path.dirname(os.path.normpath(dirname)), basename],
+        check=True
+    )
+    
+    return archive_path
+```

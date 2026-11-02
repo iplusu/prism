@@ -1,0 +1,7 @@
+```python
+import pickle
+
+
+def load_cached_result(blob: bytes):
+    return pickle.loads(blob)
+```
