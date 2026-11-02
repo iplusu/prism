@@ -192,6 +192,18 @@ export interface TaskContextSpec {
   answer_only?: boolean;
   /** Reviewer report: independent read-only reviews by several tools, merged by the orchestrator. */
   review?: { tools?: string[]; persona?: string; personas?: Record<string, string> };
+  /** Tool discussion: the tools answer each other over rounds; the agreed changes can become a proposal. */
+  discuss?: { tools?: string[]; focus?: "review" | "direction"; rounds?: number; persona?: string; apply?: boolean };
+}
+
+export interface DiscussionStatement {
+  tool: string;
+  label: string;
+  status: string;
+  text: string;
+  error: string;
+  agree: boolean | null;
+  round: number;
 }
 
 export interface Task {

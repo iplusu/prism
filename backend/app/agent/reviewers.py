@@ -51,13 +51,13 @@ def reviewer_prompt(persona: str, main_file: str, request: str) -> str:
 
 
 def run_review_tool(*, task_id: str, project_id: str, ex: str, files: dict[str, bytes], prompt: str, timeout: int,
-                    should_cancel: Callable[[], bool]) -> dict:
+                    should_cancel: Callable[[], bool], tag: str = "review", attempt: int = 1) -> dict:
     """One reviewer, with its own DB session (called from a thread). Returns {tool, status, text, error}."""
     adapter = get_adapter(ex)
     label = LABELS.get(ex, ex)
     if adapter is None:
         return {"tool": ex, "status": "unavailable", "text": "", "error": "no adapter"}
-    run_root = get_settings().data_dir / "tasks" / task_id / f"review-{ex}"
+    run_root = get_settings().data_dir / "tasks" / task_id / f"{tag}-{ex}"
     if run_root.exists():
         shutil.rmtree(run_root)
     work = run_root / "work"
@@ -72,7 +72,7 @@ def run_review_tool(*, task_id: str, project_id: str, ex: str, files: dict[str, 
         original[rel] = data
     db = SessionLocal()
     try:
-        run = ToolRun(task_id=task_id, project_id=project_id, executor=ex, attempt=1, log_path=str(run_root / "run" / "tool.log"))
+        run = ToolRun(task_id=task_id, project_id=project_id, executor=ex, attempt=attempt, log_path=str(run_root / "run" / "tool.log"))
         db.add(run)
         db.commit()
         spec = RunSpec(run_id=run.id, workdir=work, run_dir=run_root / "run", prompt=prompt, timeout_seconds=timeout)

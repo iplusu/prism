@@ -11,6 +11,8 @@ Behaviours:
   sleep          run forever (spawns a grandchild that also sleeps)
   auth-fail      print an authentication error and exit 1
   no-change      exit successfully without touching anything
+  discuss:<Name> a discussion participant: states its name, the round and which other statements it was shown;
+                 ends with STATUS: AGREE from round 2 on (DISAGREE before); when asked to edit it clarifies method.tex
   review:<Name>  a reviewer: reports the persona it was given and whether the prompt forbids edits; also
                  scribbles on main.tex (inside its private copy) to show that this never reaches the project
 """
@@ -24,8 +26,8 @@ import time
 
 mode = sys.argv[1]
 tag = ""
-if mode.startswith("review:"):
-    mode, tag = "review", sys.argv[1].split(":", 1)[1]
+if mode.startswith("review:") or mode.startswith("discuss:"):
+    mode, tag = mode.split(":", 1)[0], sys.argv[1].split(":", 1)[1]
 prompt = sys.stdin.read()
 
 
@@ -59,5 +61,17 @@ elif mode == "review":
     persona = prompt.split("Review it as: ", 1)[1].split("\n", 1)[0] if "Review it as: " in prompt else "?"
     pathlib.Path("main.tex").write_text("% reviewer scribble\n")
     out(event="done", summary=f"REVIEW by {tag}. persona={persona}. forbids_edits={'do NOT modify' in prompt}. Weakness: step size is not justified (sections/method.tex:3).")
+elif mode == "discuss":
+    if "You are editing a LaTeX" in prompt:
+        p = pathlib.Path("sections/method.tex")
+        p.write_text(p.read_text().replace("clipped to the interval", "clipped (as agreed) to the interval"))
+        out(event="done", summary=f"Applied agreed changes. goal_has_item={'JUSTIFY_STEP' in prompt}")
+    else:
+        import re
+        rnd = int(m.group(1)) if (m := re.search(r"This is round (\d+)", prompt)) else 1
+        seen = re.findall(r"----- (.+?) -----", prompt)
+        pathlib.Path("main.tex").write_text("% discussant scribble\n")
+        status = "" if rnd == 1 else ("STATUS: DISAGREE" if "Stubborn" in tag else "STATUS: AGREE")
+        out(event="done", summary=f"STATEMENT by {tag}. round={rnd}. saw={seen}. untrusted={'UNTRUSTED' in prompt}. forbids_edits={'do NOT modify' in prompt}. Proposal: JUSTIFY_STEP in sections/method.tex:3.\n{status}")
 elif mode == "no-change":
     out(event="done", summary="Nothing needed changing.")

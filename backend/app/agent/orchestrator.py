@@ -30,7 +30,7 @@ from ..security.redact import redact
 from .. import web
 from . import pages as pagelimit
 from . import words as wordcount
-from . import planner, reviewers
+from . import discussion, planner, reviewers
 from .context import build_context
 from .contract import DEFAULT_CHECKS, EXECUTORS, DelegationRequest, Edit, TaskContract
 from .policy import effective_policy, select_executor
@@ -175,6 +175,8 @@ class Runner:
         t = self.task
         s = self.settings
         mode = t.mode
+        if (t.context_spec or {}).get("discuss") is not None:
+            return self._discuss(t.context_spec["discuss"])
         if (t.context_spec or {}).get("review") is not None:
             return self._review(t.context_spec["review"])
         answer_only = bool((t.context_spec or {}).get("answer_only"))  # analysis presets: the server forbids edits
@@ -307,6 +309,125 @@ class Runner:
                  reviews=[{"tool": r["tool"], "label": reviewers.LABELS.get(r["tool"], r["tool"]), "status": r["status"],
                            "persona": personas.get(r["tool"], ""), "text": r["text"], "error": r["error"][:500]} for r in reviews])
         return self._finish("completed")
+
+    def _tool_round(self, use: list[str], prompts: dict[str, str], tag: str, timeout: int) -> dict[str, dict]:
+        """Run one read-only turn of each tool in parallel; a tool that fails is reported as failed, not filled in."""
+        import threading
+
+        cancel = threading.Event()
+        results: dict[str, dict] = {}
+
+        def work(tool: str) -> None:
+            try:
+                results[tool] = reviewers.run_review_tool(task_id=self.task.id, project_id=self.project.id, ex=tool, files=self.files,
+                                                          timeout=timeout, prompt=prompts[tool], should_cancel=cancel.is_set, tag=tag)
+            except Exception as e:  # noqa: BLE001  one participant failing must not stop the others
+                results[tool] = {"tool": tool, "status": "failed", "text": "", "error": redact(f"{type(e).__name__}: {e}")[:500]}
+
+        threads = [threading.Thread(target=work, args=(x,), daemon=True) for x in use]
+        for th in threads:
+            th.start()
+        while any(th.is_alive() for th in threads):
+            if not cancel.is_set() and (self.cancelled() or time.monotonic() > self.deadline):
+                cancel.set()
+            time.sleep(1)
+        if self.cancelled():
+            raise TaskCancelled()
+        return results
+
+    def _discuss(self, spec: dict) -> None:
+        """The tools discuss the manuscript (opening statements, then replies to each other), the orchestrator moderates,
+        and the changes everyone accepted can become one proposal through the normal delegation flow."""
+        t, s = self.task, self.settings
+        if not self.policy["allow_external"]:
+            raise RuntimeError("external tools are disabled by the project policy")
+        if not s.llm_configured:
+            raise RuntimeError("the moderator LLM is not configured (set LLM_BASE_URL and LLM_MODEL), so a discussion cannot run")
+        self.deadline = time.monotonic() + s.review_task_timeout_seconds
+        reg = adapters()
+
+        def available(name: str) -> tuple[bool, str]:
+            a = reg.get(name)
+            if a is None:
+                return False, "no adapter"
+            h = a.health()
+            return h["status"] == "available", f"{h['status']}: {h.get('detail', '')}"
+
+        use, skipped = reviewers.tool_candidates(spec.get("tools"), self.policy["allowed_executors"], available)
+        for sk in skipped:
+            self.emit("review_skip", f"{reviewers.LABELS.get(sk['tool'], sk['tool'])} not used: {sk['reason']}", **sk)
+        if len(use) < 2:
+            raise RuntimeError("a discussion needs at least two available tools: " + "; ".join(f"{x['tool']} ({x['reason']})" for x in skipped) + " (see Settings → Tools)")
+        focus = spec.get("focus") if spec.get("focus") in discussion.FOCUS else "review"
+        total = max(1, min(int(spec.get("rounds") or 2), 3))
+        apply = bool(spec.get("apply", True))
+        shared = (spec.get("persona") or "").strip()
+        names = {x: reviewers.LABELS.get(x, x) for x in use}
+        self.set_status("running")
+        self.emit("discussion", f"{len(use)} participants ({', '.join(names.values())}), up to {total} round(s), goal: {focus}",
+                  tools=use, rounds=total, focus=focus)
+        reserve = 900 if apply else 120  # time kept for the moderator and the edit that follows
+        rounds: list[list[dict]] = []
+        active = list(use)
+        notes: list[str] = []
+        for rnd in range(1, total + 1):
+            self.check_cancel()
+            budget = int(self.deadline - time.monotonic()) - reserve
+            per = min(s.review_tool_timeout_seconds, budget // (total - rnd + 1))
+            if per < 60:
+                notes.append(f"stopped before round {rnd}: the task time limit is nearly used up")
+                break
+            last = rnd == total
+            if rnd == 1:
+                prompts = {x: discussion.opening_prompt(focus, shared, self.project.main_file, t.request) for x in active}
+            else:
+                prev = {r["tool"]: r for r in rounds[-1] if r["status"] == "succeeded"}
+                prompts = {x: discussion.reply_prompt(focus, shared, self.project.main_file, t.request, prev[x],
+                                                       [prev[o] for o in active if o != x and o in prev], rnd, last) for x in active}
+            self.emit("discussion_round", f"round {rnd}/{total}: " + ", ".join(names[x] for x in active), round=rnd, tools=active)
+            res = self._tool_round(active, prompts, f"discuss{rnd}", per)
+            stm = []
+            for x in active:
+                r = res.get(x) or {"tool": x, "status": "failed", "text": "", "error": "no result"}
+                stm.append({"tool": x, "label": names[x], "status": r["status"], "text": r["text"], "error": r["error"][:500],
+                            "agree": discussion.agrees(r["text"]) if r["status"] == "succeeded" else None, "round": rnd})
+            rounds.append(stm)
+            ok = [r["tool"] for r in stm if r["status"] == "succeeded"]
+            for r in stm:
+                if r["status"] != "succeeded":
+                    notes.append(f"{r['label']} left the discussion in round {rnd} ({r['status']}: {r['error'][:120]})")
+            if rnd == 1 and len(ok) < 2:
+                raise RuntimeError("fewer than two participants delivered an opening statement, so there is nothing to discuss: " + "; ".join(notes))
+            active = ok
+            if len(active) < 2:
+                notes.append("only one participant is left; the discussion ended")
+                break
+            if rnd >= 2 and all(r["agree"] for r in stm if r["status"] == "succeeded"):
+                notes.append(f"everyone agreed in round {rnd}; the discussion ended early")
+                break
+        delivered = [[r for r in stm if r["status"] == "succeeded"] for stm in rounds]
+        self.emit("llm", f"moderating with {s.llm_model}")
+        try:
+            report = reviewers.synthesize(get_provider(), discussion.moderator_messages(focus, t.request, delivered, self.project.main_file, apply))
+        except LLMError as e:
+            raise RuntimeError(f"the moderator could not write the report: {e.message}") from e
+        body, agreed = discussion.split_agreed(report)
+        meta = {"rounds": [[{k: v for k, v in r.items()} for r in stm] for stm in rounds], "notes": notes, "skipped": skipped,
+                "agreed": agreed, "focus": focus}
+        self.say(body + ("\n\n" + "\n".join(notes) if notes else ""), kind="discussion", **meta)
+        if not apply:
+            return self._finish("completed")
+        if not agreed:
+            self.say("합의된 수정 사항이 없어 수정 제안을 만들지 않았습니다. (No change was agreed on, so no proposal was made.)", kind="answer")
+            return self._finish("completed")
+        goal = ("Apply ONLY the following changes, which the reviewing tools agreed on. Do not make any other change, "
+                "and skip an item if the manuscript does not support it.\n\n" + agreed)[:3900]
+        d = DelegationRequest(goal=goal, task_kind="edit_text", write_scope=["**/*.tex", "**/*.bib"],
+                              constraints=["Only the agreed changes; nothing else."], acceptance_checks=list(DEFAULT_CHECKS))
+        t.plan_source = "discussion"
+        self.db.commit()
+        self.emit("discussion_apply", "turning the agreed changes into a proposal")
+        return self._delegate(d, plan_source="discussion", message="Agreed in the tool discussion:\n" + agreed[:2000])
 
     def _finish(self, status: str) -> None:
         self.set_status(status)

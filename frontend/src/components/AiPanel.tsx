@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api";
-import type { ChatMessage, Proposal, Task, TaskContextSpec, TaskMode } from "../types";
+import type { ChatMessage, DiscussionStatement, Proposal, Task, TaskContextSpec, TaskMode } from "../types";
 import { MODE_LABELS, modeLabel, relTime, useAction, useAsync } from "../util";
 import type { SelectionInfo } from "./CodeEditor";
 import { IconReview, IconRetry, IconStop } from "./Icons";
@@ -136,6 +136,30 @@ export default function AiPanel(p: Props) {
     refreshAll();
   });
 
+  const [discussOpen, setDiscussOpen] = useState(false);
+  const [dFocus, setDFocus] = useState<"review" | "direction">("review");
+  const [dRounds, setDRounds] = useState(2);
+  const [dApply, setDApply] = useState(true);
+  const [dPersona, setDPersona] = useState("");
+  const [dTools, setDTools] = useState<Record<string, boolean>>({});
+  const dSys = useAsync(() => (discussOpen ? api.system() : Promise.resolve(null)), [discussOpen]);
+  const dAll = useMemo(
+    () => (dSys.data?.tools ?? []).filter((x) => ["codex", "claude", "antigravity"].includes(x.name)),
+    [dSys.data],
+  );
+  const dChosen = dAll.filter((x) => x.status === "available" && dTools[x.name] !== false).map((x) => x.name);
+  const startDiscuss = useAction(async () => {
+    const t = await api.createTask(
+      p.pid,
+      dFocus === "review" ? "Tool discussion: review the manuscript" : "Tool discussion: decide the revision direction",
+      "llm",
+      { scope: "project", discuss: { tools: dChosen, focus: dFocus, rounds: dRounds, persona: dPersona.trim(), apply: dApply } },
+    );
+    tasks.setData([t, ...(tasks.data ?? [])]);
+    setDiscussOpen(false);
+    refreshAll();
+  });
+
   const preset = useAction(async (prompt: string) => {
     const t = await api.createTask(p.pid, prompt, "llm", { scope: "project", answer_only: true });
     tasks.setData([t, ...(tasks.data ?? [])]);
@@ -221,6 +245,60 @@ export default function AiPanel(p: Props) {
                 </button>
               </div>
               <ErrorBox error={startReview.error} />
+            </div>
+          )}
+          <button type="button" className="btn btn-sm" aria-expanded={discussOpen} disabled={send.busy || preset.busy} onClick={() => setDiscussOpen((v) => !v)}
+            title="The tools read each other's statements over several rounds; the orchestrator moderates, and the changes they all accept can become a proposal.">
+            Tool discussion…
+          </button>
+          {discussOpen && (
+            <div className="review-setup small" role="group" aria-label="Tool discussion">
+              <div className="tiny muted">The selected tools first answer on their own (read-only), then answer each other for up to the chosen number of rounds. Takes many minutes and uses each tool's quota once per round.</div>
+              {dSys.loading && !dSys.data && <Loading text="Checking tools…" />}
+              {dAll.map((x) => {
+                const ok = x.status === "available";
+                return (
+                  <label key={x.name} className="check-row" title={ok ? "" : `${x.status}: ${x.detail}`}>
+                    <input type="checkbox" disabled={!ok} checked={ok && dTools[x.name] !== false} onChange={(e) => setDTools((s) => ({ ...s, [x.name]: e.target.checked }))} />{" "}
+                    {x.label} {!ok && <span className="muted tiny">({x.status})</span>}
+                  </label>
+                );
+              })}
+              <label className="field">
+                <span className="tiny muted">Topic</span>
+                <select value={dFocus} onChange={(e) => setDFocus(e.target.value as "review" | "direction")}>
+                  <option value="review">Manuscript review (find weaknesses)</option>
+                  <option value="direction">Revision direction (what to change, in what order)</option>
+                </select>
+              </label>
+              <label className="field">
+                <span className="tiny muted">Rounds</span>
+                <select value={dRounds} onChange={(e) => setDRounds(Number(e.target.value))}>
+                  {[1, 2, 3].map((n) => (
+                    <option key={n} value={n}>
+                      {n}
+                      {n === 1 ? " (independent statements only)" : ""}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="check-row">
+                <input type="checkbox" checked={dApply} onChange={(e) => setDApply(e.target.checked)} /> Turn the agreed changes into a proposal (you still review and apply it)
+              </label>
+              <label className="field">
+                <span className="tiny muted">Role for the participants (optional)</span>
+                <input value={dPersona} maxLength={2000} placeholder="e.g. a JAMS referee" onChange={(e) => setDPersona(e.target.value)} />
+              </label>
+              <div className="row-actions">
+                <button type="button" className="btn btn-sm btn-primary" disabled={dChosen.length < 2 || startDiscuss.busy} onClick={() => void startDiscuss.run()}
+                  title={dChosen.length < 2 ? "Select at least two available tools" : ""}>
+                  {startDiscuss.busy ? "Starting…" : `Start with ${dChosen.length} tools`}
+                </button>
+                <button type="button" className="btn btn-sm" onClick={() => setDiscussOpen(false)}>
+                  Cancel
+                </button>
+              </div>
+              <ErrorBox error={startDiscuss.error} />
             </div>
           )}
           <ErrorBox error={preset.error} />
@@ -366,6 +444,24 @@ function MessageItem({
               </summary>
               <div className="pre-wrap small">{r.status === "succeeded" ? r.text : r.error || "no review"}</div>
               {r.status === "succeeded" && <CopyButton text={r.text} label={`Copy ${r.label} review`} />}
+            </details>
+          ))}
+        </div>
+      )}
+      {Array.isArray(meta.rounds) && (
+        <div className="review-reports">
+          {(meta.rounds as DiscussionStatement[][]).map((stm, i) => (
+            <details key={i} className="review-one">
+              <summary className="small">
+                Round {i + 1}
+                <span className="muted tiny"> · {stm.map((x) => `${x.label}${x.status !== "succeeded" ? ` (${x.status})` : x.agree === true ? " ✓" : x.agree === false ? " ✗" : ""}`).join(", ")}</span>
+              </summary>
+              {stm.map((x) => (
+                <div key={x.tool} className="small">
+                  <strong>{x.label}</strong>
+                  <div className="pre-wrap">{x.status === "succeeded" ? x.text : x.error || x.status}</div>
+                </div>
+              ))}
             </details>
           ))}
         </div>
