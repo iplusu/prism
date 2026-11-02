@@ -324,7 +324,7 @@ function ProposalView({
           </div>
         )}
         {tab === "verification" && <VerificationReport p={p} />}
-        {tab === "pdf" && <CandidatePdf p={p} />}
+        {tab === "pdf" && <CandidatePdf p={p} canEdit={canEdit} />}
         {tab === "conflicts" && p.status === "conflict" && (
           <ConflictResolver
             p={p}
@@ -379,7 +379,24 @@ function StatusExplainer({ p, kids, pid }: { p: ProposalDetail; kids: Proposal[]
   }
 }
 
-function CandidatePdf({ p }: { p: ProposalDetail }) {
+function CandidatePdf({ p, canEdit }: { p: ProposalDetail; canEdit: boolean }) {
+  const [marked, setMarked] = useState<"off" | "building" | "on">("off");
+  const [markedError, setMarkedError] = useState("");
+  const showMarked = async () => {
+    setMarked("building");
+    setMarkedError("");
+    try {
+      const r = await api.buildMarkedPdf(p.id);
+      if (r.ok) setMarked("on");
+      else {
+        setMarked("off");
+        setMarkedError(r.error);
+      }
+    } catch (e) {
+      setMarked("off");
+      setMarkedError(e instanceof Error ? e.message : String(e));
+    }
+  };
   const b = p.candidate_build;
   if (!b) return <Empty>{p.status === "verifying" ? "The candidate is being compiled…" : "No candidate build exists for this proposal."}</Empty>;
   return (
@@ -389,9 +406,26 @@ function CandidatePdf({ p }: { p: ProposalDetail }) {
         {b.isolation ? `, isolation: ${b.isolation}` : ""}). It has not been inspected by any model — check the layout yourself.
       </p>
       {b.error && <div className={b.status === "blocked" ? "error-box" : "error-box soft"}>{b.error}</div>}
-      {b.has_pdf ? (
+      {canEdit && (
+        <div className="row" style={{ gap: 8, marginBottom: 8 }}>
+          {marked === "on" ? (
+            <button className="btn btn-xs" onClick={() => setMarked("off")}>Show the plain candidate PDF</button>
+          ) : (
+            <button className="btn btn-xs" disabled={marked === "building"} onClick={() => void showMarked()}>
+              {marked === "building" ? "Building the marked PDF…" : "Show changes marked (latexdiff)"}
+            </button>
+          )}
+          {marked === "on" && <span className="muted small">Additions are blue and underlined, deletions red and struck out. Figures and math may look different from the real layout.</span>}
+        </div>
+      )}
+      {markedError && <div className="error-box soft">Could not build the marked PDF: {markedError}</div>}
+      {b.has_pdf || marked === "on" ? (
         <div className="candidate-pdf-view">
-          <PdfViewer key={b.id} url={api.proposalPdfUrl(p.id)} downloadName={`proposal-${p.id.slice(0, 8)}.pdf`} />
+          {marked === "on" ? (
+            <PdfViewer key={`${p.id}-marked`} url={api.markedPdfUrl(p.id)} downloadName={`proposal-${p.id.slice(0, 8)}-marked.pdf`} />
+          ) : (
+            <PdfViewer key={b.id} url={api.proposalPdfUrl(p.id)} downloadName={`proposal-${p.id.slice(0, 8)}.pdf`} />
+          )}
         </div>
       ) : (
         <Empty>This build produced no PDF.</Empty>

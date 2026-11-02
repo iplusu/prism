@@ -200,3 +200,30 @@ def test_moving_equations_between_files_is_not_a_change():
     assert rep["equations"]["method.tex"]["removed"] == ["t = 1/2 \\label{e}"]
     assert rep["equations"]["method_b.tex"]["added"] == ["t = 1/3 \\label{e}"]
     assert rep["numbers"]  # 2 -> 3 is reported too
+
+
+def test_marked_pdf_is_built_from_a_proposal_and_cached(alice, bob):
+    import shutil
+    import subprocess
+    from app.compile.latex import tex_bin_dir
+    d = tex_bin_dir()
+    if not d or not shutil.which("latexdiff", path=d):
+        pytest.skip("latexdiff is not installed")
+    pid = new_sample_project(alice)["id"]
+    conclusion = read_text(alice, pid, "sections/conclusion.tex")["text"]
+    assert "is future work." in conclusion
+    prop_id = _propose(pid, {"sections/conclusion.tex": conclusion.replace("is future work.", "is deferred to a ZEBRAFISH study.", 1)})
+    drain()
+    assert alice.get(f"/api/proposals/{prop_id}/marked-pdf").status_code == 404  # not built yet
+    r = alice.post(f"/api/proposals/{prop_id}/marked-pdf")
+    assert r.status_code == 200 and r.json()["ok"], r.json()
+    assert r.json()["cached"] is False
+    pdf = alice.get(f"/api/proposals/{prop_id}/marked-pdf")
+    assert pdf.status_code == 200 and pdf.content[:5] == b"%PDF-"
+    import tempfile
+    with tempfile.NamedTemporaryFile(suffix=".pdf") as f:
+        f.write(pdf.content); f.flush()
+        text = subprocess.run(["pdftotext", f.name, "-"], capture_output=True).stdout.decode()
+    assert "ZEBRAFISH" in text and "future work" in text  # the addition and the deleted words are both on the page
+    assert alice.post(f"/api/proposals/{prop_id}/marked-pdf").json()["cached"] is True
+    assert bob.get(f"/api/proposals/{prop_id}/marked-pdf").status_code in (403, 404)  # not a member of this project

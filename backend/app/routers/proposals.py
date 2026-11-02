@@ -12,7 +12,8 @@ from ..builds import pdf_path
 from ..db import get_db
 from ..deps import current_user, get_project_for
 from ..models import Build, Proposal, User
-from ..proposals import service
+from ..models import Project
+from ..proposals import markup, service
 
 router = APIRouter(prefix="/api", tags=["proposals"])
 
@@ -60,6 +61,26 @@ def proposal_pdf(prop_id: str, user: User = Depends(current_user), db: Session =
     if b is None or not b.has_pdf or not pdf_path(b.id).exists():
         raise HTTPException(404, "no candidate PDF")
     return FileResponse(pdf_path(b.id), media_type="application/pdf")
+
+
+@router.post("/proposals/{prop_id}/marked-pdf")
+def build_marked_pdf(prop_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Compile the proposal with its changes marked (latexdiff). Takes seconds to a minute; the result is cached."""
+    p = _prop(db, prop_id, user, "editor")
+    if p.status == "verifying":
+        raise HTTPException(409, "the proposal is still being verified")
+    project = db.get(Project, p.project_id)
+    with markup.lock_for(p.id):
+        return markup.build(p, project)
+
+
+@router.get("/proposals/{prop_id}/marked-pdf")
+def marked_pdf(prop_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    p = _prop(db, prop_id, user)
+    path = markup.marked_pdf_path(p)
+    if not path.is_file():
+        raise HTTPException(404, "no marked PDF yet; build it first")
+    return FileResponse(path, media_type="application/pdf")
 
 
 @router.post("/proposals/{prop_id}/apply")

@@ -53,6 +53,9 @@ curl -sL https://yihui.org/tinytex/install-bin-unix.sh | sh                     
 # extra packages the official templates (ACL, CVPR, NeurIPS, ICML, arXiv) need; TinyTeX does not ship them:
 ~/.TinyTeX/bin/x86_64-linux/tlmgr install environ fancyhdr lineno microtype silence enumitem eso-pic units upquote \
     forloop lipsum mwe sttools currfile doi mathtools grfext todonotes courier
+# word count, lint, change-marked PDFs (texcount, chktex, latexdiff + its ulem package); latexindent also needs Perl modules:
+~/.TinyTeX/bin/x86_64-linux/tlmgr install texcount chktex latexdiff ulem latexindent
+sudo scripts/install-latexindent-deps.sh   # apt: libyaml-tiny-perl libfile-homedir-perl libunicode-linebreak-perl liblog-dispatch-perl liblog-log4perl-perl
 # bubblewrap and git: from the OS (apt install bubblewrap git) — usually already present
 ```
 
