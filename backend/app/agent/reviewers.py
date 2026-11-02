@@ -50,6 +50,14 @@ def reviewer_prompt(persona: str, main_file: str, request: str) -> str:
     ])
 
 
+def scrub_paths(text: str, work) -> str:
+    """Tools quote the absolute path of their private copy (often as file:// links). Show project-relative paths instead,
+    and never reveal where the server keeps its data."""
+    w = str(work).rstrip("/")
+    text = text.replace(f"file://{w}/", "").replace(f"{w}/", "")
+    return text.replace(str(get_settings().data_dir), "<data>")
+
+
 def run_review_tool(*, task_id: str, project_id: str, ex: str, files: dict[str, bytes], prompt: str, timeout: int,
                     should_cancel: Callable[[], bool], tag: str = "review", attempt: int = 1) -> dict:
     """One reviewer, with its own DB session (called from a thread). Returns {tool, status, text, error}."""
@@ -108,7 +116,7 @@ def run_review_tool(*, task_id: str, project_id: str, ex: str, files: dict[str, 
         db.commit()
         jobs.emit(db, task_id, "tool_end", f"{label} reviewer {result.status}: {len(text)} chars" if result.status == "succeeded"
                   else f"{label} reviewer {result.status}: {result.error[:300]}", {"executor": ex, "status": result.status})
-        return {"tool": ex, "status": result.status, "text": redact(text) if result.status == "succeeded" else "", "error": result.error}
+        return {"tool": ex, "status": result.status, "text": redact(scrub_paths(text, work)) if result.status == "succeeded" else "", "error": result.error}
     finally:
         db.close()
         shutil.rmtree(work, ignore_errors=True)

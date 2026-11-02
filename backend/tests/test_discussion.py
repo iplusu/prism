@@ -142,3 +142,14 @@ def test_discuss_spec_is_validated(alice):
     for bad in ({"tools": ["rm"]}, {"rounds": 0}, {"rounds": 4}, {"focus": "x"}, {"persona": "x" * 2001}):
         r = alice.post(f"/api/projects/{pid}/tasks", json={"request": "r", "mode": "llm", "context": {"scope": "project", "discuss": bad}})
         assert r.status_code == 422, bad
+
+
+def test_the_servers_work_paths_are_not_shown(tmp_path):
+    from app.agent.reviewers import scrub_paths
+    from app.config import get_settings
+
+    work = get_settings().data_dir / "tasks" / "t1" / "discuss1-x" / "work"
+    text = (f"see [main.tex](file://{work}/main.tex#L5) and {work}/sections/a.tex:3 and {get_settings().data_dir}/other")
+    out = scrub_paths(text, work)
+    assert out == "see [main.tex](main.tex#L5) and sections/a.tex:3 and <data>/other"
+    assert str(get_settings().data_dir) not in out
