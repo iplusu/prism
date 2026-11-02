@@ -591,3 +591,11 @@ def test_the_word_count_reaches_the_model(alice, llm):
     drain()
     sent = json.dumps(llm.requests[0]["messages"])
     assert "## Word count" in sent and ("Requested limit 100 words" in sent or "unknown: the word counter" in sent)
+
+
+def test_texcount_handles_a_single_file_project():
+    from app.agent.words import count_words
+    c = count_words({"main.tex": b"\\documentclass{article}\\begin{document}Hello world.\\end{document}\n"}, "main.tex")
+    if c is None:
+        pytest.skip("texcount is not installed")
+    assert c["total"] == 2  # no "File(s) total" line is printed when nothing is \\input

@@ -13,6 +13,7 @@ from ..compile.latex import tex_bin_dir
 
 _TARGET = re.compile(r"(\d[\d,]{0,6})\s*(?:words?\b|단어|자\b)", re.I)
 _TOTAL = re.compile(r"^(\d+)\+(\d+)\+(\d+) .*File\(s\) total", re.M)
+_SINGLE = re.compile(r"^(\d+)\+(\d+)\+(\d+) .*File: ", re.M)  # a project without \input has no "total" line
 
 
 def target_words(request: str) -> int | None:
@@ -43,7 +44,8 @@ def count_words(files: dict[str, bytes], main_file: str) -> dict | None:
                                  timeout=30, env={"PATH": f"{d}:/usr/bin:/bin", "HOME": tmp})
         except (OSError, subprocess.TimeoutExpired):
             return None
-    m = _TOTAL.search(out.stdout.decode("utf-8", "replace"))
+    text = out.stdout.decode("utf-8", "replace")
+    m = _TOTAL.search(text) or _SINGLE.search(text)
     if not m:
         return None
     t, h, c = (int(x) for x in m.groups())
