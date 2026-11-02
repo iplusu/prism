@@ -108,3 +108,50 @@ def check(files: dict[str, bytes], main_file: str = "main.tex") -> dict:
     issues.sort(key=lambda i: (order[i["severity"]], i["path"], i["line"] or 0))
     counts = {s: sum(1 for i in issues if i["severity"] == s) for s in order}
     return {"issues": issues, "counts": counts}
+
+
+_CHKTEX = re.compile(r"^(.+?):(\d+):(Error|Warning|Message):(\d+):(.*)$")
+
+
+def lint(files: dict[str, bytes], limit: int = 200) -> dict:
+    """chktex's typographic and syntax warnings for the .tex files, as review issues. {"issues": [...], "available": bool}.
+    Style hints are 'info' (hidden by default in the UI); chktex 'Error' lines are 'warning'. Needs chktex in the TeX bin directory."""
+    import subprocess
+    import tempfile
+    from pathlib import Path
+
+    from .compile.latex import tex_bin_dir
+    d = tex_bin_dir()
+    exe = Path(d) / "chktex" if d else None
+    if exe is None or not exe.exists():
+        return {"issues": [], "available": False}
+    issues: list[dict] = []
+    with tempfile.TemporaryDirectory(prefix="prism-lint-") as tmp:
+        root = Path(tmp).resolve()
+        names = []
+        for rel, data in sorted(files.items()):
+            if not rel.endswith(".tex"):
+                continue
+            p = (root / rel).resolve()
+            if root not in p.parents:
+                continue
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_bytes(data)
+            names.append(rel)
+        if not names:
+            return {"issues": [], "available": True}
+        try:
+            out = subprocess.run([str(exe), "-q", "-v0", "-f", "%f:%l:%k:%n:%m\n", *names], cwd=root, capture_output=True,
+                                 timeout=60, env={"PATH": f"{d}:/usr/bin:/bin", "HOME": tmp})
+        except (OSError, subprocess.TimeoutExpired):
+            return {"issues": [], "available": False}
+    for line in out.stdout.decode("utf-8", "replace").splitlines():
+        m = _CHKTEX.match(line)
+        if not m:
+            continue
+        path, ln, kind, num, msg = m.groups()
+        issues.append({"kind": "chktex", "severity": "warning" if kind == "Error" else "info", "path": path.removeprefix("./"),
+                       "line": int(ln), "message": f"chktex {num}: {msg.strip()}"})
+        if len(issues) >= limit:
+            break
+    return {"issues": issues, "available": True}

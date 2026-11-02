@@ -187,3 +187,13 @@ def test_search_falls_back_to_content_words_and_sanitizes(alice, monkeypatch):
     assert "%22" in urls[0] and "AND" not in urls[0]  # phrase first
     assert "all:attention" in urls[1] and "all:is" not in urls[1] and "all:you" not in urls[1]  # stopwords dropped
     assert not any(c in u for u in urls for c in ('(', ')', ' OR '))  # user-typed operators removed
+
+
+def test_chktex_findings_are_listed_with_file_and_line():
+    from app.review import lint
+    out = lint({"main.tex": b"\\documentclass{article}\\begin{document}\nHello  world .\nDone.\n\\end{document}\n"})
+    if not out["available"]:
+        pytest.skip("chktex is not installed")
+    assert out["issues"] and all(i["kind"] == "chktex" and i["path"] == "main.tex" and i["line"] for i in out["issues"])
+    assert any(i["line"] == 2 for i in out["issues"])
+    assert lint({"a.bib": b"@misc{x}"}) == {"issues": [], "available": True} or not lint({"a.bib": b"@misc{x}"})["available"]

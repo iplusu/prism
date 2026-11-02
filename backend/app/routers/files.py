@@ -212,7 +212,14 @@ def search(pid: str, q: str, regex: bool = False, case: bool = False, user: User
 @router.get("/review")
 def review_manuscript(pid: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
     p, _ = get_project_for(db, pid, user, "viewer")
-    return review.check(_live(pid), p.main_file)
+    files = _live(pid)
+    rep = review.check(files, p.main_file)
+    lint = review.lint(files)
+    rep["issues"] += lint["issues"]
+    for i in lint["issues"]:
+        rep["counts"][i["severity"]] = rep["counts"].get(i["severity"], 0) + 1
+    rep["chktex"] = lint["available"]
+    return rep
 
 
 @router.get("/arxiv-check")
