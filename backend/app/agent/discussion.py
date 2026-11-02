@@ -15,6 +15,8 @@ from .reviewers import DEFAULT_PERSONA, LABELS, MAX_REVIEW_CHARS
 
 FOCUS = {
     "review": "find the manuscript's real weaknesses (claims, evidence, clarity, structure, presentation) and agree what must be fixed",
+    "strategy": "work out the overall strategy for this paper: the core contribution and how to position it, the storyline, what evidence "
+                "or experiments are missing, what to cut or emphasise (also given the page limit), and the order of work; then agree the first concrete edits",
     "direction": "decide in which direction and in what priority this manuscript should be revised, and what exactly to change",
 }
 AGREED_HEADING = "## AGREED CHANGES"

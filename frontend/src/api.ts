@@ -236,6 +236,8 @@ export const api = {
     request<Proposal>(`/api/proposals/${enc(id)}/select`, { method: "POST", body: { selections } }),
   resolveConflicts: (id: string, resolutions: Record<string, string>, choices: Record<string, "current" | "proposal"> = {}) =>
     request<Proposal>(`/api/proposals/${enc(id)}/resolve`, { method: "POST", body: { resolutions, choices } }),
+  /** A conflicted proposal: ask the same tool again, on the manuscript as it is now (queues an ordinary task). */
+  redoOnCurrent: (id: string) => request<Task>(`/api/proposals/${enc(id)}/redo`, { method: "POST" }),
 
   // --- versions ---------------------------------------------------------
   versions: (pid: string) => request<Version[]>(`${P(pid)}/versions`),

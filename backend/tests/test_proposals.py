@@ -252,3 +252,27 @@ def test_tidy_creates_a_proposal_and_never_writes_the_file(alice):
     assert "\\item one" in tidied and "\\item two" in tidied and tidied != messy and tidied.startswith("\\begin{itemize}")
     assert alice.post(f"/api/projects/{pid}/tidy", json={"path": "sections/conclusion.tex"}).status_code == 400  # already tidy
     assert alice.post(f"/api/projects/{pid}/tidy", json={"path": "refs.bib"}).status_code == 400  # not a .tex file
+
+
+def test_redo_on_the_current_manuscript_queues_the_same_request(alice):
+    pid = new_sample_project(alice)["id"]
+    base = read_text(alice, pid, "sections/conclusion.tex")["text"]
+    prop_id = _propose(pid, {"sections/conclusion.tex": base.replace("is future work.", "is left for future work.")})
+    drain()
+    # a proposal that is not in conflict cannot be redone
+    assert alice.post(f"/api/proposals/{prop_id}/redo").status_code == 409
+    _replace(alice, pid, "sections/conclusion.tex", "is future work.", "is the subject of our next paper.")
+    alice.post(f"/api/proposals/{prop_id}/apply")
+    drain()
+    assert _get(alice, prop_id)["status"] == "conflict"
+    r = alice.post(f"/api/proposals/{prop_id}/redo")
+    assert r.status_code == 200, r.text
+    t = r.json()
+    assert t["project_id"] == pid and t["context_spec"]["scope"] == "project" and t["status"] == "queued"
+    assert "REDO ON THE CURRENT MANUSCRIPT" in t["request"] and "Keep every number and equation" in t["request"]
+    # nothing was changed: the proposal is still in conflict until the user rejects it or the new proposal replaces it
+    assert _get(alice, prop_id)["status"] == "conflict"
+    live = read_text(alice, pid, "sections/conclusion.tex")["text"]
+    assert "subject of our next paper" in live
+    alice.post(f"/api/tasks/{t['id']}/cancel")
+    drain()

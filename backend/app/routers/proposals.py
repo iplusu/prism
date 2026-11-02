@@ -11,7 +11,8 @@ from sqlalchemy.orm import Session
 from ..builds import pdf_path
 from ..db import get_db
 from ..deps import current_user, get_project_for
-from ..models import Build, Proposal, User
+from ..agent.contract import EXECUTORS
+from ..models import Build, Proposal, Task, User
 from ..models import Project
 from ..proposals import markup, service
 
@@ -122,3 +123,29 @@ def resolve(prop_id: str, body: ResolveIn, user: User = Depends(current_user), d
     except ValueError as e:
         raise HTTPException(400, str(e)) from e
     return service.proposal_json(db, child)
+
+
+REDO_NOTE = (
+    "\n\n---\nREDO ON THE CURRENT MANUSCRIPT: an earlier attempt at this request was made against an older version of the "
+    "manuscript, and it now conflicts with edits made since. Do the request again on the CURRENT text, as it is now. "
+    "Keep every edit made since that attempt. Keep every number and equation as it is unless the request itself requires "
+    "changing it, and name each number or equation you change in your final message. Do not invent results."
+)
+
+
+@router.post("/proposals/{prop_id}/redo")
+def redo_on_current(prop_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """A conflicted proposal: ask the same tool again, with the same request, on the manuscript as it is now.
+    This only queues an ordinary task; its result is a new proposal that is verified like any other."""
+    from .tasks import ContextIn, TaskIn, _create, task_json
+
+    p = _prop(db, prop_id, user, "editor")
+    if p.status != "conflict":
+        raise HTTPException(409, "only a proposal with conflicts can be redone")
+    orig = db.get(Task, p.task_id) if p.task_id else None
+    request = (orig.request if orig else f"{p.title}\n{p.summary or ''}").strip()
+    if len(request) > 20_000 - len(REDO_NOTE):
+        request = request[: 20_000 - len(REDO_NOTE)]
+    mode = p.executor if p.executor in EXECUTORS else "auto"
+    body = TaskIn(request=request + REDO_NOTE, mode=mode, context=ContextIn(scope="project"))
+    return task_json(_create(db, p.project_id, user, body, retry_of=p.task_id))

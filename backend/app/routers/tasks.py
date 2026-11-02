@@ -42,7 +42,7 @@ class ReviewIn(BaseModel):
 class DiscussIn(BaseModel):
     """Tool discussion: the tools read each other's statements over several rounds; the agreed changes can become a proposal."""
     tools: list[Literal["codex", "claude", "antigravity"]] | None = None  # default: every tool that is allowed and available (min. 2)
-    focus: Literal["review", "direction"] = "review"
+    focus: Literal["review", "direction", "strategy"] = "review"
     rounds: int = Field(default=2, ge=1, le=3)
     persona: str = Field(default="", max_length=2000)
     apply: bool = True  # turn the agreed changes into a proposal (still verified and applied only by the user)

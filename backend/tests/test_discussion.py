@@ -139,7 +139,7 @@ def test_needs_the_moderator_llm(alice):
 
 def test_discuss_spec_is_validated(alice):
     pid = new_sample_project(alice)["id"]
-    for bad in ({"tools": ["rm"]}, {"rounds": 0}, {"rounds": 4}, {"focus": "x"}, {"persona": "x" * 2001}):
+    for bad in ({"tools": ["rm"]}, {"rounds": 0}, {"rounds": 4}, {"focus": "x"}, {"focus": "plan"}, {"persona": "x" * 2001}):
         r = alice.post(f"/api/projects/{pid}/tasks", json={"request": "r", "mode": "llm", "context": {"scope": "project", "discuss": bad}})
         assert r.status_code == 422, bad
 
@@ -153,3 +153,16 @@ def test_the_servers_work_paths_are_not_shown(tmp_path):
     out = scrub_paths(text, work)
     assert out == "see [main.tex](main.tex#L5) and sections/a.tex:3 and <data>/other"
     assert str(get_settings().data_dir) not in out
+
+
+def test_strategy_focus_sets_the_goal_for_tools_and_moderator(alice, llm):
+    _tools()
+    pid = new_sample_project(alice)["id"]
+    llm.script = [{"content": REPORT + "## AGREED CHANGES\nNONE"}]
+    tid = _discuss(alice, pid, rounds=1, focus="strategy")
+    drain()
+    t, msgs = _msgs(alice, tid)
+    d = next(m for m in msgs if m["meta"].get("kind") == "discussion")
+    assert d["meta"]["focus"] == "strategy" and t["status"] == "completed", t["error"]
+    mod = next(r["messages"][-1]["content"] for r in llm.requests if "### Round 1" in r["messages"][-1]["content"])
+    assert "overall strategy for this paper" in mod

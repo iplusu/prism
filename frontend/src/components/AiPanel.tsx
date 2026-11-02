@@ -137,7 +137,7 @@ export default function AiPanel(p: Props) {
   });
 
   const [discussOpen, setDiscussOpen] = useState(false);
-  const [dFocus, setDFocus] = useState<"review" | "direction">("review");
+  const [dFocus, setDFocus] = useState<"review" | "direction" | "strategy">("review");
   const [dRounds, setDRounds] = useState(2);
   const [dApply, setDApply] = useState(true);
   const [dPersona, setDPersona] = useState("");
@@ -151,7 +151,8 @@ export default function AiPanel(p: Props) {
   const startDiscuss = useAction(async () => {
     const t = await api.createTask(
       p.pid,
-      dFocus === "review" ? "Tool discussion: review the manuscript" : "Tool discussion: decide the revision direction",
+      dFocus === "review" ? "Tool discussion: review the manuscript"
+        : dFocus === "strategy" ? "Tool discussion: plan the paper's strategy" : "Tool discussion: decide the revision direction",
       "llm",
       { scope: "project", discuss: { tools: dChosen, focus: dFocus, rounds: dRounds, persona: dPersona.trim(), apply: dApply } },
     );
@@ -266,8 +267,9 @@ export default function AiPanel(p: Props) {
               })}
               <label className="field">
                 <span className="tiny muted">Topic</span>
-                <select value={dFocus} onChange={(e) => setDFocus(e.target.value as "review" | "direction")}>
+                <select value={dFocus} onChange={(e) => setDFocus(e.target.value as "review" | "direction" | "strategy")}>
                   <option value="review">Manuscript review (find weaknesses)</option>
+                  <option value="strategy">Strategy (positioning, storyline, missing evidence, order of work)</option>
                   <option value="direction">Revision direction (what to change, in what order)</option>
                 </select>
               </label>

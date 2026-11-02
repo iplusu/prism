@@ -125,6 +125,7 @@ function ProposalView({
   onChanged: () => void;
   goTo: (id: string, notice?: string) => void;
 }) {
+  const navigate = useNavigate();
   const d = useAsync(() => api.proposal(id), [id]);
   const p = d.data;
   const polling = p && (p.status === "verifying" || p.status === "applying");
@@ -330,6 +331,7 @@ function ProposalView({
           <ConflictResolver
             p={p}
             canEdit={canEdit}
+            onRedo={() => navigate(`/p/${pid}`)}
             onResolved={(child) => {
               onChanged();
               goTo(
@@ -437,7 +439,7 @@ function CandidatePdf({ p, canEdit }: { p: ProposalDetail; canEdit: boolean }) {
 
 const MARKER = /^(<<<<<<< |=======$|>>>>>>> |\|\|\|\|\|\|\| )/m;
 
-function ConflictResolver({ p, canEdit, onResolved }: { p: ProposalDetail; canEdit: boolean; onResolved: (child: Proposal) => void }) {
+function ConflictResolver({ p, canEdit, onResolved, onRedo }: { p: ProposalDetail; canEdit: boolean; onResolved: (child: Proposal) => void; onRedo: () => void }) {
   const [texts, setTexts] = useState<Record<string, string>>(() =>
     Object.fromEntries(p.conflicts.map((c) => [c.path, c.merged ?? c.current ?? c.proposal ?? ""])),
   );
@@ -452,8 +454,22 @@ function ConflictResolver({ p, canEdit, onResolved }: { p: ProposalDetail; canEd
     const child = await api.resolveConflicts(p.id, resolutions, choices);
     onResolved(child);
   });
+  const redo = useAction(async () => {
+    await api.redoOnCurrent(p.id);
+    onRedo();
+  });
   return (
     <div className="conflicts">
+      {canEdit && (
+        <div className="redo-box">
+          <button className="btn" disabled={redo.busy} onClick={() => redo.run()}
+            title="Runs the original request again on the manuscript as it is now. Nothing is changed until you apply the new proposal.">
+            {redo.busy ? "Queuing…" : "Redo on the current manuscript"}
+          </button>
+          <span className="muted small"> Asks {p.executor && p.executor !== "llm" ? modeLabel(p.executor) : "the assistant"} again with the same request, keeping the edits made since. The result is a new proposal; this one stays until you reject it. It reads the whole manuscript, so it can take a while.</span>
+          <ErrorBox error={redo.error} />
+        </div>
+      )}
       <p className="small">
         For each file, edit the <strong>resolution</strong> so it contains the final text. Merged text uses diff3 markers:{" "}
         <code>{"<<<<<<< current manuscript"}</code>, <code>{"||||||| proposal base"}</code>, <code>=======</code>, <code>{">>>>>>> proposal"}</code>. Remove all
