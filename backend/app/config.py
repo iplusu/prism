@@ -119,6 +119,13 @@ class Settings(BaseSettings):
     # candidate further, while its compiled PDF is still over the limit. 0 turns it off.
     page_limit_retries: int = Field(default=2, ge=0, le=5, alias="PAGE_LIMIT_RETRIES")
     worker_agent_slots: int = Field(default=3, ge=1, le=32, alias="WORKER_AGENT_SLOTS")
+    # Lets the orchestrator ask the server to search the web / fetch public pages (action "search"). Off by default:
+    # queries leave the server. WEB_SEARCH_URL is an optional SearXNG /search endpoint; empty = DuckDuckGo HTML.
+    web_access_enabled: bool = Field(default=False, alias="WEB_ACCESS_ENABLED")
+    web_search_url: str = Field(default="", alias="WEB_SEARCH_URL")
+    web_max_rounds: int = Field(default=3, ge=1, le=4, alias="WEB_MAX_ROUNDS")
+    web_timeout_seconds: int = Field(default=20, ge=3, le=120, alias="WEB_TIMEOUT_SECONDS")
+    web_fetch_max_chars: int = Field(default=12000, ge=1000, le=100000, alias="WEB_FETCH_MAX_CHARS")
 
     @property
     def is_postgres(self) -> bool:

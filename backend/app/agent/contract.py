@@ -73,11 +73,13 @@ class DelegationRequest(Strict):
 class Plan(Strict):
     """Single structured decision returned by the orchestrator model."""
 
-    action: Literal["answer", "edit", "delegate"]
+    action: Literal["answer", "edit", "delegate", "search"]
     message: str = Field(default="", max_length=20000, description="answer text or a short explanation to the user")
     edits: list[Edit] = Field(default_factory=list, max_length=40)
     delegation: DelegationRequest | None = None
     summary: str = Field(default="", max_length=600, description="one-line summary of the proposed change")
+    queries: list[str] = Field(default_factory=list, max_length=3, description="web search queries (action search)")
+    urls: list[str] = Field(default_factory=list, max_length=3, description="public web pages to read (action search)")
 
 
 class TaskContract(Strict):

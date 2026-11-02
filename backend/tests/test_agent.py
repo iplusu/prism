@@ -562,3 +562,32 @@ def test_a_short_document_is_unchanged_by_the_splitting():
     files = {"main.tex": b"\\section{A}\nhello\n\\section{B}\nworld\n"}
     c = build_context(files, request="x", spec={"scope": "project"}, main_file="main.tex", budget=24000)
     assert not c.truncated and "## NOTE" not in c.text and "hello" in c.text and "world" in c.text
+
+
+def test_word_limit_request_parser():
+    from app.agent.words import target_words
+    assert target_words("8,000 words 이내로 줄여줘") == 8000
+    assert target_words("keep it under 6000 words") == 6000
+    assert target_words("5000단어 이내") == 5000
+    assert target_words("3 words") is None and target_words("hello") is None
+
+
+def test_texcount_counts_included_files_and_the_note_says_it_is_an_estimate():
+    from app.agent.words import count_words, note
+    files = {"main.tex": b"\\documentclass{article}\\begin{document}\\section{A B}Hello world, this is \\textbf{a} test \\input{c}."
+                         b"\\begin{figure}\\caption{one two}\\end{figure}\\end{document}\n", "c.tex": b"extra three words\n"}
+    c = count_words(files, "main.tex")
+    if c is None:
+        pytest.skip("texcount is not installed")
+    assert c == {"text": 9, "headers": 2, "captions": 2, "total": 13}
+    assert "over by about 3 words" in note(c, 10) and "room" in note(c, 20)
+    assert note(None, 10).startswith("unknown")
+
+
+def test_the_word_count_reaches_the_model(alice, llm):
+    pid = new_sample_project(alice)["id"]
+    llm.script = [tool("answer", message="ok")]
+    _task(alice, pid, "Keep the paper under 100 words")
+    drain()
+    sent = json.dumps(llm.requests[0]["messages"])
+    assert "## Word count" in sent and ("Requested limit 100 words" in sent or "unknown: the word counter" in sent)
