@@ -83,12 +83,14 @@ def test_search_is_not_offered_when_web_access_is_off(alice, llm):
 def test_the_search_rounds_are_bounded(alice, llm, monkeypatch):
     monkeypatch.setattr(web, "search", lambda q, n=6: [{"title": "t", "url": "https://example.org", "snippet": "s"}])
     pid = new_sample_project(alice)["id"]
+    set_env(WEB_MAX_ROUNDS="2")
     llm.script = [tool("search", queries=["a"]), tool("search", queries=["b"]), tool("answer", message="done")]
     tid = _task(alice, pid, "look it up")
     drain()
     assert _get(alice, tid)["status"] == "completed"
     # the third planning call no longer offers the search tool
     assert "search" not in [t["function"]["name"] for t in llm.requests[2].get("tools", [])]
+    set_env(WEB_MAX_ROUNDS="3")
 
 
 def test_bing_is_the_fallback_when_duckduckgo_challenges(monkeypatch):
