@@ -130,15 +130,22 @@ def moderator_messages(focus: str, request: str, rounds: list[list[dict]], main_
            "alternative. Keep every specific the participants gave; never shorten to a summary; never invent results, datasets or measured numbers)"]
           if focus == "experiments" else []),
 
+        *([] if plan else [
+            "## FINAL CONCLUSION  (the point of the discussion: ONE integrated conclusion the author can act on, not a list of opinions. "
+            "(1) the verdict in a few sentences; (2) every point the participants contested, DECIDED: say which option to take and why, from the "
+            "participants' own evidence, tagged [moderator's recommendation], naming who argued the alternative and when it would be the better "
+            "choice; leave a point to the authors only if it truly depends on something the participants and the files do not show, and say what; "
+            "(3) the resulting actions as a numbered list in priority order, each with file:line and what to change, marking which are agreed by all "
+            "and which are the moderator's recommendation. Never invent facts or results)"]),
         "## CONSENSUS  (points all active participants accept, with file:line, naming who)",
-        "## DISAGREEMENTS  (points still contested: each side's position and evidence; say if it needs the authors' judgement)",
+        "## DISAGREEMENTS  (points that were contested: each side's position and evidence, and how it was decided above)",
         "## DROPPED  (points one participant raised that the others rebutted, and why)",
     ]
     if apply:
         ask += [
             f"{AGREED_HEADING}  (a numbered list of the concrete text edits that ALL active participants accept and that "
             "fit the goal; each: file, what to change. Only edits the CURRENT manuscript already supports: never text that reports results of "
-            "experiments that were not run, and a proposed experiment is not a text edit. Never include contested points. If there are none, write exactly NONE)",
+            "experiments that were not run, and a proposed experiment is not a text edit. Never include contested points or the moderator's own recommendations. If there are none, write exactly NONE)",
         ]
     ask.append("Reply in the language of the manuscript.")
     user = (f"Goal: {FOCUS[focus]}\nMain file: {main_file}\nUser's request: {request or '(none)'}\n\n"

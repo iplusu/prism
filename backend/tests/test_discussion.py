@@ -233,3 +233,22 @@ def test_experiment_design_asks_tools_and_moderator_for_full_protocols(alice, ll
     for prompt in (discussion.opening_prompt("experiments", "", "main.tex", "x"), discussion.reply_prompt("experiments", "", "main.tex", "x", {"tool": "codex", "text": "t"}, [], 2, True)):
         assert "protocols" in prompt and "sample size" in prompt
     assert "revised protocols" in discussion.reply_prompt("experiments", "", "main.tex", "x", {"tool": "codex", "text": "t"}, [], 2, True)
+
+
+def test_a_review_discussion_ends_in_one_decided_conclusion(alice, llm):
+    _tools()
+    pid = new_sample_project(alice)["id"]
+    llm.script = [{"content": REPORT + AGREED}]
+    tid = _discuss(alice, pid, rounds=2)
+    drain()
+    mod = next(r["messages"][-1]["content"] for r in llm.requests if "### Round 1" in r["messages"][-1]["content"])
+    # the moderator must decide the contested points and give prioritised actions, not only list who said what
+    for needle in ("## FINAL CONCLUSION", "DECIDED", "[moderator's recommendation]", "priority order", "how it was decided above"):
+        assert needle in mod, needle
+    # but the moderator's own recommendations never become the edit goal
+    assert "never include contested points or the moderator's own recommendations" in mod.lower()
+    # strategy and experiments keep their own full-design section instead of a second conclusion
+    for focus in ("strategy", "experiments"):
+        from app.agent import discussion
+        m = discussion.moderator_messages(focus, "", [[{"tool": "codex", "label": "Codex", "status": "succeeded", "text": "x"}]], "main.tex", False)[-1]["content"]
+        assert "## FINAL CONCLUSION" not in m
