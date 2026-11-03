@@ -9,6 +9,7 @@ from ..compile.latex import sandbox_status, tex_status
 from ..config import get_settings
 from ..deps import current_user, require_admin
 from ..llm.diagnostics import load_capabilities, run_connection_test
+from ..llm.provider import using_fallback
 from ..models import User
 from ..sandbox import bwrap_works
 
@@ -20,7 +21,9 @@ def _llm_config() -> dict:
     return {"provider": s.llm_provider, "base_url": s.llm_base_url, "model": s.llm_model,
             "api_key_set": bool(s.llm_api_key), "configured": s.llm_configured,
             "timeout_seconds": s.llm_timeout_seconds, "context_chars": s.llm_context_chars,
-            "planning_mode_setting": s.llm_planning_mode}
+            "planning_mode_setting": s.llm_planning_mode,
+            "fallback": {"configured": s.llm_fallback_configured, "model": s.llm_fallback_model,
+                         "context_chars": s.llm_fallback_context_chars, "in_use": using_fallback()}}
 
 
 def _collab() -> dict:

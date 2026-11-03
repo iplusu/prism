@@ -11,6 +11,7 @@ registering it in `PROVIDERS`.
 from __future__ import annotations
 
 import json
+import threading
 import time
 from collections.abc import Iterator
 from dataclasses import dataclass, field
@@ -194,11 +195,64 @@ class OpenAICompatibleProvider(LLMProvider):
 PROVIDERS: dict[str, type[LLMProvider]] = {"openai": OpenAICompatibleProvider}
 
 
-def get_provider() -> LLMProvider:
+# --- backup server -------------------------------------------------------------------------------------------
+# With LLM_FALLBACK_* set, the primary server is probed (GET /models, short timeout) and the result is remembered for a
+# while; while it is unreachable every LLM call goes to the backup, and the primary is tried again after the TTL.
+_PROBE_OK_TTL = 30.0
+_PROBE_DOWN_TTL = 30.0
+_probe: dict = {"at": 0.0, "up": True}
+_probe_lock = threading.Lock()
+
+
+def _build(base_url: str, model: str, key: str) -> LLMProvider:
     s = get_settings()
-    if not s.llm_configured:
-        raise LLMError("not_configured", "LLM_BASE_URL and LLM_MODEL must be set")
     cls = PROVIDERS.get(s.llm_provider)
     if cls is None:
         raise LLMError("unsupported", f"LLM_PROVIDER={s.llm_provider!r} has no adapter (available: {', '.join(PROVIDERS)})")
-    return cls(s.llm_base_url, s.llm_model, s.llm_api_key, s.llm_timeout_seconds, s.llm_connect_timeout_seconds)
+    return cls(base_url, model, key, s.llm_timeout_seconds, s.llm_connect_timeout_seconds)
+
+
+def primary_up() -> bool:
+    """False only when a backup is configured and the primary did not answer its last probe."""
+    s = get_settings()
+    if not s.llm_fallback_configured or not s.llm_configured:
+        return True
+    with _probe_lock:
+        ttl = _PROBE_OK_TTL if _probe["up"] else _PROBE_DOWN_TTL
+        if time.monotonic() - _probe["at"] < ttl:
+            return bool(_probe["up"])
+        try:
+            httpx.get(f"{s.llm_base_url.rstrip('/')}/models", headers=_build(s.llm_base_url, s.llm_model, s.llm_api_key)._headers(),
+                      timeout=httpx.Timeout(4.0, connect=3.0)).raise_for_status()
+            up = True
+        except Exception:
+            up = False
+        _probe.update(at=time.monotonic(), up=up)
+        return up
+
+
+def using_fallback() -> bool:
+    return get_settings().llm_fallback_configured and not primary_up()
+
+
+def active_model() -> str:
+    s = get_settings()
+    return s.llm_fallback_model if using_fallback() else s.llm_model
+
+
+def context_chars() -> int:
+    s = get_settings()
+    return s.llm_fallback_context_chars if using_fallback() else s.llm_context_chars
+
+
+def reset_probe() -> None:
+    _probe.update(at=0.0, up=True)
+
+
+def get_provider() -> LLMProvider:
+    s = get_settings()
+    if not s.llm_configured and not s.llm_fallback_configured:
+        raise LLMError("not_configured", "LLM_BASE_URL and LLM_MODEL must be set")
+    if s.llm_fallback_configured and (not s.llm_configured or not primary_up()):
+        return _build(s.llm_fallback_base_url, s.llm_fallback_model, s.llm_fallback_api_key)
+    return _build(s.llm_base_url, s.llm_model, s.llm_api_key)

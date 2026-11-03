@@ -148,6 +148,8 @@ LLM_CONTEXT_CHARS=24000      # 실제 서빙 중인 모델의 문맥 길이에 �
 
 서버 이름만으로 포트·모델 ID·API 형식·문맥 길이를 추측하지 않습니다(배포 시에는 a5000에서 실행 중인 서버와 그 `GET /v1/models` 목록에서 주소와 모델 ID를 확인했습니다). OpenAI 호환이 아닌 API라면 `backend/app/llm/provider.py`의 `LLMProvider`를 구현해 `PROVIDERS`에 등록합니다.
 
+**백업 LLM과 로드 밸런서.** `LLM_BASE_URL`은 서버 한 대 대신 로드 밸런서를 가리킬 수 있습니다(예: 한 모델 이름을 여러 vLLM 서버에 나눠 주고 재시도하는 LiteLLM 라우터. 마스터 키는 `LLM_API_KEY`). 어느 서버로 갈지 모르므로 `LLM_CONTEXT_CHARS`는 뒤에 있는 서버 중 **가장 작은** 문맥에 맞춥니다. 이와 별개로 `LLM_FALLBACK_BASE_URL` / `LLM_FALLBACK_MODEL` / `LLM_FALLBACK_API_KEY` / `LLM_FALLBACK_CONTEXT_CHARS`로 백업을 지정하면, 기본 서버가 **아예 응답하지 않을 때만** 백업을 씁니다(`GET <base>/models`로 확인, 연결 3초, 30초 캐시. 느린 서버나 HTTP 오류는 넘기지 않으며, 기본 서버가 응답하면 곧바로 되돌아갑니다). 백업이 켜져 있는 동안 계획은 JSON-in-prompt 방식, 문맥 예산은 백업 값, 자동 완성은 백업 모델을 쓰고, 설정 화면에는 `fallback.in_use`만 보이며 백업 주소는 노출하지 않습니다. 서버가 localhost에만 열려 있어 SSH로만 닿는다면 터널을 사용자 서비스로 둡니다(`ssh -N -L 127.0.0.1:<로컬 포트>:127.0.0.1:<원격 포트> <ssh 호스트 별칭>`, `Restart=always`, `BatchMode=yes`). URL은 `http://127.0.0.1:<로컬 포트>/v1`로 지정합니다. 실제 호스트명과 주소는 `.env`와 로컬 유닛에만 두고 저장소에는 넣지 않습니다.
+
 **설정 → Orchestrator LLM → Test connection**(또는 `app.cli llm-test`)이 다음을 실제로 확인합니다.
 
 1. 웹앱 백엔드에서 API 접근 가능 여부(DNS/연결 거부/TLS/인증 오류 구분)

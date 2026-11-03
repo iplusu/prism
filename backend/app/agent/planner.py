@@ -18,7 +18,7 @@ from pydantic import ValidationError
 
 from ..config import get_settings
 from ..llm.diagnostics import load_capabilities, run_connection_test
-from ..llm.provider import LLMError, LLMProvider
+from ..llm.provider import LLMError, LLMProvider, using_fallback
 from .contract import EXECUTORS, Plan, PLAN_JSON_SCHEMA
 
 SYSTEM = """You are the orchestrator of a LaTeX research-paper workspace used by a research group.
@@ -95,6 +95,8 @@ def planning_mode() -> str:
     s = get_settings()
     if s.llm_planning_mode in ("tools", "json", "json-prompt"):
         return s.llm_planning_mode
+    if using_fallback():  # the backup server's capabilities were never tested; plain JSON in the prompt works with any chat model
+        return "json-prompt"
     caps = load_capabilities()
     if caps is None:
         caps = run_connection_test()

@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session
 from ..config import get_settings
 from ..db import get_db
 from ..deps import current_user, get_project_for
-from ..llm.provider import LLMError, get_provider
+from ..llm.provider import LLMError, get_provider, using_fallback
 from ..models import User
 
 router = APIRouter(tags=["complete"])
@@ -51,6 +51,8 @@ def _served_models(provider) -> list[str]:
 
 def default_model() -> str:
     s = get_settings()
+    if using_fallback():  # the primary model is not served by the backup server
+        return s.llm_fallback_model
     return s.llm_completion_model or s.llm_model
 
 

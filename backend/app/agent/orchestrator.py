@@ -21,7 +21,7 @@ from ..adapters.base import AdapterError, RunSpec
 from ..adapters.registry import adapters, get_adapter
 from ..compile.latex import compile_project
 from ..config import get_settings
-from ..llm.provider import LLMError, get_provider
+from ..llm.provider import LLMError, active_model, context_chars as llm_context_chars, get_provider
 from ..models import Build, Message, Project, Task, ToolRun, User, now
 from ..projects import documents, store
 from ..proposals import service as proposals
@@ -128,7 +128,7 @@ class Runner:
             self.page_note = self._page_note(snap.tree_hash)
             self.word_note = wordcount.note(wordcount.count_words(snap.files, self.project.main_file), wordcount.target_words(t.request))
             ctx = build_context(snap.files, request=t.request, spec=t.context_spec or {}, main_file=self.project.main_file,
-                                budget=self.settings.llm_context_chars, diagnostics=last.diagnostics if last else None,
+                                budget=llm_context_chars(), diagnostics=last.diagnostics if last else None,
                                 pages=self.page_note, words=self.word_note)
             self.emit("context", f"context: {len(ctx.text)} chars{' (truncated)' if ctx.truncated else ''}",
                       included=ctx.included[:50], truncated=ctx.truncated)
@@ -181,13 +181,13 @@ class Runner:
             return self._review(t.context_spec["review"])
         answer_only = bool((t.context_spec or {}).get("answer_only"))  # analysis presets: the server forbids edits
         explicit_tool = (mode in EXECUTORS or mode == "demo") and not answer_only
-        llm_ok = s.llm_configured
+        llm_ok = s.llm_usable
         if not llm_ok and not explicit_tool and not s.demo_mode:
             raise RuntimeError("the orchestrator LLM is not configured (set LLM_BASE_URL and LLM_MODEL), "
                                "so Auto/LLM modes cannot run. You can still pick a specific tool.")
         if llm_ok:
             provider = get_provider()
-            self.emit("llm", f"planning with {s.llm_model}")
+            self.emit("llm", f"planning with {active_model()}")
             web_ok = s.web_access_enabled and not answer_only and not explicit_tool
             rounds = 0
             try:
@@ -293,8 +293,8 @@ class Runner:
             raise RuntimeError("no reviewer delivered a review: " + "; ".join(
                 f"{reviewers.LABELS.get(r['tool'], r['tool'])}: {r['status']} {r['error'][:150]}" for r in reviews))
         merged, note = None, ""
-        if s.llm_configured:
-            self.emit("llm", f"consolidating {sum(r['status'] == 'succeeded' for r in reviews)} review(s) with {s.llm_model}")
+        if s.llm_usable:
+            self.emit("llm", f"consolidating {sum(r['status'] == 'succeeded' for r in reviews)} review(s) with {active_model()}")
             try:
                 merged = reviewers.synthesize(get_provider(), reviewers.synthesis_messages(t.request, personas, reviews, self.project.main_file))
             except LLMError as e:
@@ -341,7 +341,7 @@ class Runner:
         t, s = self.task, self.settings
         if not self.policy["allow_external"]:
             raise RuntimeError("external tools are disabled by the project policy")
-        if not s.llm_configured:
+        if not s.llm_usable:
             raise RuntimeError("the moderator LLM is not configured (set LLM_BASE_URL and LLM_MODEL), so a discussion cannot run")
         self.deadline = time.monotonic() + s.review_task_timeout_seconds
         reg = adapters()
@@ -406,7 +406,7 @@ class Runner:
                 notes.append(f"everyone agreed in round {rnd}; the discussion ended early")
                 break
         delivered = [[r for r in stm if r["status"] == "succeeded"] for stm in rounds]
-        self.emit("llm", f"moderating with {s.llm_model}")
+        self.emit("llm", f"moderating with {active_model()}")
         try:
             report = reviewers.synthesize(get_provider(), discussion.moderator_messages(focus, t.request, delivered, self.project.main_file, apply),
                                          min_tokens=14_000 if focus == "experiments" else 8_000)
@@ -753,10 +753,10 @@ class Runner:
     def _shorten_round(self, executor: str, feedback: str, cand: dict[str, bytes], rnd: int) -> dict | None:
         """One more shortening pass on `cand` (self.files is already `cand`). Returns changes relative to `cand`."""
         if executor == "llm":
-            if not self.settings.llm_configured:
+            if not self.settings.llm_usable:
                 return None
             ctx = build_context(cand, request=feedback, spec={"scope": "project"}, main_file=self.project.main_file,
-                                budget=self.settings.llm_context_chars, pages="")
+                                budget=llm_context_chars(), pages="")
             try:
                 out = planner.plan(get_provider(), request=feedback, context=ctx.text, allow_delegate=False,
                                    validate_edits=self._validate_edits)
@@ -806,7 +806,7 @@ class Runner:
                        f"(base build: {rep.get('build', {}).get('base')})\nPDF pages: base {rep.get('build', {}).get('pages_base', 'unknown')} -> candidate {rep.get('build', {}).get('pages_candidate', 'unknown')} (None = not recorded); text lines on the last page: base {rep.get('build', {}).get('last_page_lines_base')} -> candidate {rep.get('build', {}).get('last_page_lines_candidate')}\nChecks:\n" + "\n".join(lines)
                        + f"\nAnalysis: {json.dumps(rep.get('analysis', {}))[:3000]}")
         explanation = ""
-        if self.settings.llm_configured:
+        if self.settings.llm_usable:
             try:
                 explanation = planner.review(get_provider(), request=self.task.request, summary=summary + "\n" + (message or tool_message)[:2000],
                                              report_text=report_text)

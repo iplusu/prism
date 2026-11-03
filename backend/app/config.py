@@ -52,6 +52,13 @@ class Settings(BaseSettings):
     # tool choice and tries it off first for plain answers/edits without external tools; "on"/"off" force it.
     llm_planning_thinking: str = Field(default="auto", pattern="^(auto|on|off)$", alias="LLM_PLANNING_THINKING")
 
+    # Optional backup model server (OpenAI-compatible, e.g. another vLLM). Used only while the primary server cannot be
+    # reached; nothing is sent to it otherwise. Its context window is its own, so set its budget here.
+    llm_fallback_base_url: str = Field(default="", alias="LLM_FALLBACK_BASE_URL")
+    llm_fallback_model: str = Field(default="", alias="LLM_FALLBACK_MODEL")
+    llm_fallback_api_key: str = Field(default="", alias="LLM_FALLBACK_API_KEY")
+    llm_fallback_context_chars: int = Field(default=24000, alias="LLM_FALLBACK_CONTEXT_CHARS")
+
     # --- collaboration service ----------------------------------------------
     collab_enabled: bool = Field(default=False, alias="COLLAB_ENABLED")
     collab_internal_url: str = Field(default="http://127.0.0.1:1234", alias="COLLAB_INTERNAL_URL")
@@ -134,6 +141,15 @@ class Settings(BaseSettings):
     @property
     def llm_configured(self) -> bool:
         return bool(self.llm_base_url and self.llm_model)
+
+    @property
+    def llm_usable(self) -> bool:
+        """Some model server (primary or backup) is configured."""
+        return self.llm_configured or self.llm_fallback_configured
+
+    @property
+    def llm_fallback_configured(self) -> bool:
+        return bool(self.llm_fallback_base_url and self.llm_fallback_model)
 
     def ensure_dirs(self) -> None:
         for sub in ("projects", "builds", "tasks", "proposals", "tool-homes"):
