@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
-import { api } from "../api";
+import { api, ApiError } from "../api";
 import type { ChatMessage, DiscussionStatement, Proposal, Task, TaskContextSpec, TaskMode } from "../types";
 import { MODE_LABELS, modeLabel, relTime, useAction, useAsync } from "../util";
 import type { SelectionInfo } from "./CodeEditor";
-import { IconReview, IconRetry, IconStop } from "./Icons";
+import { IconReview, IconRetry, IconStop, IconUpload } from "./Icons";
 import { EventList, executorFromEvents, isActive, LiveDot, useTaskStream } from "./TaskProgress";
 import { Badge, CopyButton, Empty, ErrorBox, Loading, Tag } from "./ui";
 
@@ -97,8 +97,28 @@ export default function AiPanel(p: Props) {
   const sel = pinned ?? p.selection;
   const effectiveScope: Scope = scope === "selection" && !sel ? "project" : scope === "file" && !p.activePath ? "project" : scope;
 
+  // Attached files are saved in the project under attachments/ (never over an existing file) and named in the request.
+  const [attached, setAttached] = useState<File[]>([]);
+  const fileRef = useRef<HTMLInputElement>(null);
+  async function saveAttachments(): Promise<string[]> {
+    const saved: string[] = [];
+    for (const f of attached) {
+      let file = f;
+      try {
+        await api.uploadFile(p.pid, file, "attachments", false);
+      } catch (e) {
+        if (!(e instanceof ApiError && e.status === 409)) throw new Error(`${f.name}: ${e instanceof Error ? e.message : "not attached"}`);
+        file = new File([f], `${Date.now().toString(36)}-${f.name}`, { type: f.type }); // the name is taken: keep both
+        await api.uploadFile(p.pid, file, "attachments", false);
+      }
+      saved.push(`attachments/${file.name}`);
+    }
+    return saved;
+  }
+
   const send = useAction(async () => {
-    const ctx: TaskContextSpec =
+    const saved = attached.length ? await saveAttachments() : [];
+    const base: TaskContextSpec =
       effectiveScope === "selection" && sel
         ? {
             scope: "selection",
@@ -108,7 +128,11 @@ export default function AiPanel(p: Props) {
         : effectiveScope === "file"
           ? { scope: "file", path: p.activePath }
           : { scope: "project" };
-    const t = await api.createTask(p.pid, text.trim(), mode, ctx);
+    const ctx: TaskContextSpec = saved.length ? { ...base, attachments: saved } : base;
+    const request = saved.length ? `${text.trim()}\n\nAttached files (saved in the project):\n${saved.map((s) => `- ${s}`).join("\n")}` : text.trim();
+    const t = await api.createTask(p.pid, request, mode, ctx);
+    if (saved.length) p.onApplied(saved);
+    setAttached([]);
     setText("");
     setPinned(null);
     tasks.setData([t, ...(tasks.data ?? [])]);
@@ -367,7 +391,32 @@ export default function AiPanel(p: Props) {
               }
             }}
           />
+          {attached.length > 0 && (
+            <div className="small" style={{ display: "flex", gap: 6, flexWrap: "wrap" }} aria-label="Attached files">
+              {attached.map((f, i) => (
+                <span key={`${f.name}-${i}`} className="tag">
+                  {f.name} ({Math.max(1, Math.round(f.size / 1024))} KB)
+                  <button type="button" className="icon-btn sm" aria-label={`Remove ${f.name}`} onClick={() => setAttached(attached.filter((_, j) => j !== i))}>
+                    ×
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
           <div className="row-actions">
+            <input
+              ref={fileRef}
+              type="file"
+              multiple
+              hidden
+              onChange={(e) => {
+                setAttached([...attached, ...Array.from(e.target.files ?? [])].slice(0, 10));
+                e.target.value = "";
+              }}
+            />
+            <button type="button" className="icon-btn sm" aria-label="Attach files" title="Attach files: saved in the project under attachments/ and named in the request" disabled={attached.length >= 10} onClick={() => fileRef.current?.click()}>
+              <IconUpload />
+            </button>
             <label className="tool-select">
               <span className="tiny muted">Tool</span>
               <select value={mode} onChange={(e) => setMode(e.target.value as TaskMode)} aria-label="Tool that performs the task">

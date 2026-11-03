@@ -190,6 +190,8 @@ export interface TaskContextSpec {
   selection?: { from_line: number; to_line: number; text: string } | null;
   /** Analysis request: the server lets it answer only, never edit or delegate. */
   answer_only?: boolean;
+  /** Files the user attached; saved in the project under attachments/ before the task starts. */
+  attachments?: string[];
   /** Reviewer report: independent read-only reviews by several tools, merged by the orchestrator. */
   review?: { tools?: string[]; persona?: string; personas?: Record<string, string> };
   /** Tool discussion: the tools answer each other over rounds; the agreed changes can become a proposal. */

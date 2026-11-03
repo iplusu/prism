@@ -252,3 +252,16 @@ def test_a_review_discussion_ends_in_one_decided_conclusion(alice, llm):
         from app.agent import discussion
         m = discussion.moderator_messages(focus, "", [[{"tool": "codex", "label": "Codex", "status": "succeeded", "text": "x"}]], "main.tex", False)[-1]["content"]
         assert "## FINAL CONCLUSION" not in m
+
+
+def test_a_korean_request_gets_a_korean_version_of_the_report(alice, llm):
+    from app.agent import discussion
+
+    stm = [[{"tool": "codex", "label": "Codex", "status": "succeeded", "text": "x"}]]
+    ko = discussion.moderator_messages("direction", "4페이지에 맞게 전략 수립", stm, "main.tex", True)[-1]["content"]
+    en = discussion.moderator_messages("direction", "fit it into four pages", stm, "main.tex", True)[-1]["content"]
+    assert "## 한국어" in ko and "SAME report again in Korean" in ko and "## 한국어" not in en
+    # the Korean copy comes before the agreed changes, which are split off and applied
+    assert ko.index("## 한국어") < ko.index("AGREED CHANGES")
+    assert "최종 설계" in discussion.moderator_messages("strategy", "전략", stm, "main.tex", False)[-1]["content"]
+    assert "실험 프로토콜" in discussion.moderator_messages("experiments", "실험", stm, "main.tex", False)[-1]["content"]

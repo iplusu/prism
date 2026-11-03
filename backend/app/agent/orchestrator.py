@@ -409,7 +409,7 @@ class Runner:
         self.emit("llm", f"moderating with {active_model()}")
         try:
             report = reviewers.synthesize(get_provider(), discussion.moderator_messages(focus, t.request, delivered, self.project.main_file, apply),
-                                         min_tokens=14_000 if focus == "experiments" else 8_000)
+                                         min_tokens=(14_000 if focus == "experiments" else 8_000) + (6_000 if discussion._has_hangul(t.request) else 0))
         except LLMError as e:
             raise RuntimeError(f"the moderator could not write the report: {e.message}") from e
         body, agreed = discussion.split_agreed(report)

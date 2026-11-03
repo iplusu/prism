@@ -55,6 +55,15 @@ class ContextIn(BaseModel):
     answer_only: bool = False  # analysis presets: the task may only answer, never edit or delegate
     discuss: DiscussIn | None = None
     review: ReviewIn | None = None  # Reviewer report: independent read-only reviews by several tools, then one consolidated report
+    attachments: list[str] = Field(default_factory=list, max_length=10)  # files the user attached; already saved under attachments/
+
+    @field_validator("attachments")
+    @classmethod
+    def _under_attachments(cls, v):
+        for a in v:
+            if len(a) > 300 or not a.startswith("attachments/") or ".." in a.split("/") or "\\" in a:
+                raise ValueError("attachments must be paths under attachments/")
+        return v
 
 
 class TaskIn(BaseModel):

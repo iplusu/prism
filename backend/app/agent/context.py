@@ -168,6 +168,18 @@ def build_context(files: dict[str, bytes], *, request: str, spec: dict, main_fil
             add("## Latest build diagnostics\n" + "\n".join(
                 f"- {d['severity']}: {d.get('file') or '?'}:{d.get('line') or '?'} {d['message'][:200]}" for d in errs) + "\n")
 
+    for a in [x for x in (spec.get("attachments") or []) if isinstance(x, str)][:10]:
+        d = files.get(a)
+        if d is None:
+            add(f"## Attached file: {a}\n(not found in the project)\n", required=True)
+        elif is_text(a, d):
+            cap = min(30_000, max(2_000, budget // 4))
+            body = d.decode("utf-8", "replace")
+            note = f"\n[... {len(body) - cap} more characters not shown; the file is in the project ...]" if len(body) > cap else ""
+            add(f"## Attached file: {a} (the user attached this to the request)\n```\n{body[:cap]}{note}\n```\n", tag=a, required=True)
+        else:
+            add(f"## Attached file: {a}\n(binary, {len(d)} bytes, not shown here; it is in the project for a tool to open)\n", tag=a, required=True)
+
     scope = spec.get("scope", "project")
     path = spec.get("path")
     if scope == "selection" and spec.get("selection"):

@@ -103,6 +103,10 @@ MODERATOR_SYSTEM = (
 )
 
 
+def _has_hangul(text: str) -> bool:
+    return any("\uac00" <= c <= "\ud7a3" for c in text or "")
+
+
 def moderator_messages(focus: str, request: str, rounds: list[list[dict]], main_file: str, apply: bool) -> list[dict]:
     plan = focus in ("strategy", "experiments")
     parts = []
@@ -141,6 +145,12 @@ def moderator_messages(focus: str, request: str, rounds: list[list[dict]], main_
         "## DISAGREEMENTS  (points that were contested: each side's position and evidence, and how it was decided above)",
         "## DROPPED  (points one participant raised that the others rebutted, and why)",
     ]
+    if _has_hangul(request):
+        ask.append(
+            "## 한국어  (the user wrote in Korean: write the SAME report again in Korean, as the LAST section before any agreed changes. It must carry "
+            "the same decisions, the same [moderator's recommendation] tags, file:line references and numbers, in this order: 요약; "
+            + ("최종 설계" if focus == "strategy" else "실험 프로토콜 (every experiment, in full)" if focus == "experiments" else "최종 결론 (verdict, decided points, prioritised actions)")
+            + "; 합의; 이견과 결정. Translate faithfully: add nothing, drop nothing, never invent)")
     if apply:
         ask += [
             f"{AGREED_HEADING}  (a numbered list of the concrete text edits that ALL active participants accept and that "
