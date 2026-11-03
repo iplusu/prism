@@ -6,7 +6,8 @@ import { MODE_LABELS, modeLabel, relTime, useAction, useAsync } from "../util";
 import type { SelectionInfo } from "./CodeEditor";
 import { IconReview, IconRetry, IconStop, IconUpload } from "./Icons";
 import { EventList, executorFromEvents, isActive, LiveDot, useTaskStream } from "./TaskProgress";
-import { Badge, CopyButton, Empty, ErrorBox, Loading, Tag } from "./ui";
+import PdfViewer from "./PdfViewer";
+import { Badge, CopyButton, Empty, ErrorBox, Loading, Modal, Tag } from "./ui";
 
 type Scope = TaskContextSpec["scope"];
 
@@ -617,8 +618,10 @@ function ProposalCard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [waiting, id]);
   const busy = apply.busy || waiting || proposal?.status === "applying";
+  const [preview, setPreview] = useState(false);
   return (
     <div className="proposal-card">
+      {preview && <CandidatePreview id={id} onClose={() => setPreview(false)} />}
       <div className="row-actions">
         <strong className="small">Proposed changes</strong>
         {proposal && <Badge status={proposal.status} />}
@@ -627,6 +630,11 @@ function ProposalCard({
         {canEdit && proposal?.status === "ready" && (
           <button className="btn btn-sm btn-primary" disabled={busy} onClick={() => void apply.run()} title="Apply all changes to the manuscript (it was compiled and checked)">
             {busy ? "Applying…" : "Apply"}
+          </button>
+        )}
+        {proposal?.candidate_build_id && (
+          <button className="btn btn-sm" onClick={() => setPreview(true)} title="The PDF compiled from this proposal, before anything is applied">
+            Preview PDF
           </button>
         )}
         <button className="btn btn-sm" onClick={() => onReview(id)}>
@@ -650,6 +658,43 @@ function ProposalCard({
       )}
       {proposal?.status === "superseded" && <p className="tiny muted">This proposal was replaced by a newer one; open the review to follow it.</p>}
     </div>
+  );
+}
+
+/** The PDF compiled from a proposal, shown over the chat before anything is applied; the changes can be marked (latexdiff). */
+function CandidatePreview({ id, onClose }: { id: string; onClose: () => void }) {
+  const [marked, setMarked] = useState<"off" | "building" | "on">("off");
+  const mark = useAction(async () => {
+    setMarked("building");
+    try {
+      const r = await api.buildMarkedPdf(id);
+      if (!r.ok) throw new Error(r.error || "could not mark the changes");
+      setMarked("on");
+    } catch (e) {
+      setMarked("off");
+      throw e;
+    }
+  });
+  return (
+    <Modal title="Preview: the PDF with this proposal applied (nothing is applied yet)" onClose={onClose} wide>
+      <div className="row-actions" style={{ marginBottom: 8 }}>
+        {marked === "on" ? (
+          <button className="btn btn-xs" onClick={() => setMarked("off")}>Show the plain PDF</button>
+        ) : (
+          <button className="btn btn-xs" disabled={marked === "building"} onClick={() => void mark.run()} title="Compiles base and candidate through latexdiff; takes up to a minute">
+            {marked === "building" ? "Building the marked PDF…" : "Show changes marked (latexdiff)"}
+          </button>
+        )}
+      </div>
+      <ErrorBox error={mark.error} />
+      <div className="candidate-pdf-view">
+        {marked === "on" ? (
+          <PdfViewer key={`${id}-marked`} url={api.markedPdfUrl(id)} downloadName={`proposal-${id.slice(0, 8)}-marked.pdf`} />
+        ) : (
+          <PdfViewer key={id} url={api.proposalPdfUrl(id)} downloadName={`proposal-${id.slice(0, 8)}.pdf`} />
+        )}
+      </div>
+    </Modal>
   );
 }
 
