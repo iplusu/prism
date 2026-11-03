@@ -19,6 +19,12 @@ FOCUS = {
                 "is missing, what to cut or emphasise (also given the page limit), and the order of work. Where the user asks for additional "
                 "experiments or analyses, DESIGN them concretely (hypothesis, setup, data, baselines, metrics, what result would support or refute the claim, "
                 "cost, and which part of the manuscript it would change). This is a plan for the authors: nothing is run and no result is invented. Finish with your concrete recommendation for every point you and the others disagree on, so that the design can be settled",
+    "experiments": "design the ADDITIONAL experiments or analyses the user asks for as protocols the authors could hand to someone and run: "
+                   "not strategy or positioning. For every experiment: the claim it tests and a directional hypothesis; every condition/arm and what "
+                   "differs between them; the units, the sample size and why it is enough; randomisation, pairing and seeds; the procedure step by step; "
+                   "the exact inputs (data, models, parameters), taken from the manuscript where it states them; exact metric definitions; the statistical "
+                   "analysis (test or interval method, multiplicity, effect size); a decision rule fixed in advance; the table or figure it produces and "
+                   "where it goes in the paper; compute, time and cost; the threats to validity and the control for each. Nothing is run and no result is invented",
     "direction": "decide in which direction and in what priority this manuscript should be revised, and what exactly to change",
 }
 AGREED_HEADING = "## AGREED CHANGES"
@@ -37,7 +43,11 @@ def opening_prompt(focus: str, persona: str, main_file: str, request: str) -> st
         "  - Base every point on the files; give file and line. Do not invent related work, citations or results.",
         "  - This is your independent first position; the others will read it next.",
         "",
-        "Write: (1) your findings, most important first, each with file:line; (2) the concrete changes you propose (what, where).",
+        *(["Write the experiment protocols themselves, each with every field listed in the goal (arms, sample size and why, seeds, steps, inputs, "
+           "metrics with formulas, analysis, decision rule, where the result goes in the paper, cost, threats). Read what the manuscript already "
+           "fixes (data, models, budget, thresholds, constraints such as 'no human experiments') and design inside it; give file:line for those facts "
+           "and mark any value you propose as PROPOSED."] if focus == "experiments" else
+          ["Write: (1) your findings, most important first, each with file:line; (2) the concrete changes you propose (what, where)."]),
         f"Main file: {main_file}",
         *([f"The user's request: {request}"] if request.strip() else []),
         "Reply in the language of the manuscript. Your final message must be the complete statement.",
@@ -69,7 +79,9 @@ def reply_prompt(focus: str, persona: str, main_file: str, request: str, own: di
         "",
         "# Your previous statement", own["text"][:MAX_REVIEW_CHARS],
         "", "# What the others said", _block(others),
-        "", "Finish with the list of changes you now think are justified and agreed or still contested, then a last line, exactly:",
+        "", ("Finish with the revised protocols (all fields, complete, not a diff) and, for each point still contested, your concrete choice and why, then a last line, exactly:"
+             if focus == "experiments" else
+             "Finish with the list of changes you now think are justified and agreed or still contested, then a last line, exactly:"),
         "STATUS: AGREE      (you accept the shared plan as it stands)",
         "or",
         "STATUS: DISAGREE   (something important is still contested)",
@@ -92,7 +104,7 @@ MODERATOR_SYSTEM = (
 
 
 def moderator_messages(focus: str, request: str, rounds: list[list[dict]], main_file: str, apply: bool) -> list[dict]:
-    plan = focus == "strategy"
+    plan = focus in ("strategy", "experiments")
     parts = []
     for i, stm in enumerate(rounds, 1):
         parts.append(f"### Round {i}\n" + _block(stm, 12000 if plan else 7000))
@@ -106,7 +118,18 @@ def moderator_messages(focus: str, request: str, rounds: list[list[dict]], main_
            "and why, from the participants' own evidence, tagged [moderator's recommendation] and naming who argued the alternative and "
            "when it would be the better choice; (4) total resources and a rough schedule using only figures the participants gave; "
            "(5) main risks and what to do if a gate fails. Keep every specific the participants gave; never shorten to a summary; "
-           "never invent numbers, datasets or results)"] if plan else []),
+           "never invent numbers, datasets or results)"] if focus == "strategy" else []),
+        *(["## EXPERIMENT PROTOCOLS  (for EACH experiment, a complete protocol with these fields, in this order: ID and name; claim tested and directional "
+           "hypothesis; conditions/arms as a table (what each arm changes); units, sample size and the reason it suffices; randomisation, pairing, seeds; "
+           "procedure as numbered steps; inputs (data, models, parameters: take them from the manuscript, otherwise write PROPOSED: and the value, or "
+           "TO BE DECIDED BY THE AUTHORS: and the options); metrics with exact definitions or formulas; statistical analysis (test or interval method, "
+           "multiplicity, effect size); the decision rule fixed in advance with numeric thresholds (PROPOSED: if the manuscript has none); the table/figure "
+           "produced and the manuscript section it goes into; compute, time, cost (only figures given in the files or by the participants, else say what to "
+           "measure); threats to validity and the control for each. Then a summary table of all experiments: ID, question, arms, N, cost, order and "
+           "dependency. Settle every disagreement between participants by choosing one option, tagged [moderator's recommendation] with who argued the "
+           "alternative. Keep every specific the participants gave; never shorten to a summary; never invent results, datasets or measured numbers)"]
+          if focus == "experiments" else []),
+
         "## CONSENSUS  (points all active participants accept, with file:line, naming who)",
         "## DISAGREEMENTS  (points still contested: each side's position and evidence; say if it needs the authors' judgement)",
         "## DROPPED  (points one participant raised that the others rebutted, and why)",

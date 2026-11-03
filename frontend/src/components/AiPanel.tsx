@@ -137,7 +137,7 @@ export default function AiPanel(p: Props) {
   });
 
   const [discussOpen, setDiscussOpen] = useState(false);
-  const [dFocus, setDFocus] = useState<"review" | "direction" | "strategy">("review");
+  const [dFocus, setDFocus] = useState<"review" | "direction" | "strategy" | "experiments">("review");
   const [dRounds, setDRounds] = useState(2);
   const [dApply, setDApply] = useState(true);
   const [dPersona, setDPersona] = useState("");
@@ -153,7 +153,8 @@ export default function AiPanel(p: Props) {
     const t = await api.createTask(
       p.pid,
       (dFocus === "review" ? "Tool discussion: review the manuscript"
-        : dFocus === "strategy" ? "Tool discussion: plan the paper's strategy" : "Tool discussion: decide the revision direction")
+        : dFocus === "strategy" ? "Tool discussion: plan the paper's strategy"
+        : dFocus === "experiments" ? "Tool discussion: design the additional experiments" : "Tool discussion: decide the revision direction")
         + (dAsk.trim() ? `\n\n${dAsk.trim()}` : ""),
       "llm",
       { scope: "project", discuss: { tools: dChosen, focus: dFocus, rounds: dRounds, persona: dPersona.trim(), apply: dApply } },
@@ -198,6 +199,7 @@ export default function AiPanel(p: Props) {
         {messages.data?.map((m) => (
           <MessageItem
             key={m.id}
+            pid={p.pid}
             m={m}
             task={m.task_id ? taskById.get(m.task_id) : undefined}
             proposal={typeof m.meta?.proposal_id === "string" ? propById.get(m.meta.proposal_id as string) : undefined}
@@ -269,9 +271,10 @@ export default function AiPanel(p: Props) {
               })}
               <label className="field">
                 <span className="tiny muted">Topic</span>
-                <select value={dFocus} onChange={(e) => { const f = e.target.value as "review" | "direction" | "strategy"; setDFocus(f); setDApply(f !== "strategy"); }}>
+                <select value={dFocus} onChange={(e) => { const f = e.target.value as "review" | "direction" | "strategy" | "experiments"; setDFocus(f); setDApply(f !== "strategy" && f !== "experiments"); }}>
                   <option value="review">Manuscript review (find weaknesses)</option>
-                  <option value="strategy">Strategy / experiment design (a plan, no edits by default)</option>
+                  <option value="strategy">Strategy (positioning, storyline, order of work; no edits by default)</option>
+                  <option value="experiments">Experiment design (protocols: arms, N, analysis, decision rule)</option>
                   <option value="direction">Revision direction (what to change, in what order)</option>
                 </select>
               </label>
@@ -392,6 +395,7 @@ export default function AiPanel(p: Props) {
 }
 
 function MessageItem({
+  pid,
   m,
   task,
   proposal,
@@ -401,6 +405,7 @@ function MessageItem({
   onApplied,
   reloadProposals,
 }: {
+  pid: string;
   m: ChatMessage;
   task: Task | undefined;
   proposal: Proposal | undefined;
@@ -456,6 +461,7 @@ function MessageItem({
           ))}
         </div>
       )}
+      {meta.kind === "discussion" && canEdit && <SaveDiscussion pid={pid} m={m} onSaved={onApplied} />}
       {Array.isArray(meta.rounds) && (
         <div className="review-reports">
           {(meta.rounds as DiscussionStatement[][]).map((stm, i) => (
@@ -476,6 +482,30 @@ function MessageItem({
         </div>
       )}
       {propId && <ProposalCard id={propId} proposal={proposal} canEdit={canEdit} onReview={onReview} onChanged={onChanged} onApplied={onApplied} reloadProposals={reloadProposals} />}
+    </div>
+  );
+}
+
+/** Saves the discussion report (summary, final design, consensus, disagreements) as a Markdown note in the project.
+ *  Only a new file under notes/ is created; no manuscript file is touched and the build does not use it. */
+function SaveDiscussion({ pid, m, onSaved }: { pid: string; m: ChatMessage; onSaved: (paths: string[]) => void }) {
+  const [saved, setSaved] = useState<string | null>(null);
+  const save = useAction(async () => {
+    const d = new Date(m.created_at);
+    const z = (n: number) => String(n).padStart(2, "0");
+    const stamp = `${d.getFullYear()}${z(d.getMonth() + 1)}${z(d.getDate())}-${z(d.getHours())}${z(d.getMinutes())}${z(d.getSeconds())}`;
+    const path = `notes/${String(m.meta?.focus ?? "discussion")}-${stamp}.md`;
+    await api.createFile(pid, path, `# Tool discussion (${String(m.meta?.focus ?? "")}), ${d.toLocaleString()}\n\n${m.content}\n`);
+    setSaved(path);
+    onSaved([path]);
+  });
+  return (
+    <div className="small" style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+      <button type="button" className="btn btn-sm" disabled={save.busy || saved !== null} onClick={() => void save.run()} title="Creates one new Markdown file under notes/; no manuscript file is changed">
+        {saved ? "Saved" : save.busy ? "Saving…" : "Save as file"}
+      </button>
+      {saved && <span className="muted tiny">{saved}</span>}
+      {save.error && <span className="tiny" style={{ color: "var(--danger, #b00020)" }}>{save.error}</span>}
     </div>
   );
 }

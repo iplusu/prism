@@ -154,11 +154,11 @@ def synthesis_messages(request: str, personas: dict[str, str], reviews: list[dic
     return [{"role": "system", "content": SYNTH_SYSTEM}, {"role": "user", "content": user}]
 
 
-def synthesize(provider, messages: list[dict]) -> str:
+def synthesize(provider, messages: list[dict], min_tokens: int = 8_000) -> str:
     """The consolidated report. Merging reports is summarisation, so the first attempt switches the model's hidden
     reasoning off (a reasoning model otherwise spends its whole output budget thinking about 30k characters of
     input and returns nothing); if that gives nothing, one more attempt with reasoning on and a larger budget."""
-    base = max(get_settings().llm_max_output_tokens, 8_000)
+    base = max(get_settings().llm_max_output_tokens, min_tokens)
     attempts = [(base, {"chat_template_kwargs": {"enable_thinking": False}}), (16_384, None)]
     last = ""
     for max_tokens, extra in attempts:

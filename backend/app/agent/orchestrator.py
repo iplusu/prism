@@ -360,7 +360,7 @@ class Runner:
             raise RuntimeError("a discussion needs at least two available tools: " + "; ".join(f"{x['tool']} ({x['reason']})" for x in skipped) + " (see Settings → Tools)")
         focus = spec.get("focus") if spec.get("focus") in discussion.FOCUS else "review"
         total = max(1, min(int(spec.get("rounds") or 2), 3))
-        apply = bool(spec["apply"]) if spec.get("apply") is not None else focus != "strategy"
+        apply = bool(spec["apply"]) if spec.get("apply") is not None else focus not in ("strategy", "experiments")
         shared = (spec.get("persona") or "").strip()
         names = {x: reviewers.LABELS.get(x, x) for x in use}
         self.set_status("running")
@@ -408,7 +408,8 @@ class Runner:
         delivered = [[r for r in stm if r["status"] == "succeeded"] for stm in rounds]
         self.emit("llm", f"moderating with {s.llm_model}")
         try:
-            report = reviewers.synthesize(get_provider(), discussion.moderator_messages(focus, t.request, delivered, self.project.main_file, apply))
+            report = reviewers.synthesize(get_provider(), discussion.moderator_messages(focus, t.request, delivered, self.project.main_file, apply),
+                                         min_tokens=14_000 if focus == "experiments" else 8_000)
         except LLMError as e:
             raise RuntimeError(f"the moderator could not write the report: {e.message}") from e
         body, agreed = discussion.split_agreed(report)

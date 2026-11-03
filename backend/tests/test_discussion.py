@@ -213,3 +213,23 @@ def test_the_users_own_words_reach_every_tool_and_the_moderator(alice, llm):
     assert "DESIGN-THE-EXTRA-EXPERIMENTS" in discussion.reply_prompt("strategy", "", "main.tex", ask, own, [own], 2, True)
     mod = next(r["messages"][-1]["content"] for r in llm.requests if "### Round 1" in r["messages"][-1]["content"])
     assert "DESIGN-THE-EXTRA-EXPERIMENTS" in mod
+
+
+def test_experiment_design_asks_tools_and_moderator_for_full_protocols(alice, llm):
+    from app.agent import discussion
+
+    _tools()
+    pid = new_sample_project(alice)["id"]
+    llm.script = [{"content": REPORT + "## EXPERIMENT PROTOCOLS\nE1: arms A/B"}]
+    tid = _discuss(alice, pid, rounds=1, focus="experiments")
+    drain()
+    t, msgs = _msgs(alice, tid)
+    assert t["status"] == "completed", t["error"]
+    assert not any(m["meta"].get("proposal_id") for m in msgs)
+    mod = next(r["messages"][-1]["content"] for r in llm.requests if "### Round 1" in r["messages"][-1]["content"])
+    for needle in ("## EXPERIMENT PROTOCOLS", "sample size", "decision rule fixed in advance", "summary table of all experiments", "never invent results"):
+        assert needle in mod, needle
+    assert "## FINAL DESIGN" not in mod and "AGREED CHANGES" not in mod
+    for prompt in (discussion.opening_prompt("experiments", "", "main.tex", "x"), discussion.reply_prompt("experiments", "", "main.tex", "x", {"tool": "codex", "text": "t"}, [], 2, True)):
+        assert "protocols" in prompt and "sample size" in prompt
+    assert "revised protocols" in discussion.reply_prompt("experiments", "", "main.tex", "x", {"tool": "codex", "text": "t"}, [], 2, True)
