@@ -482,6 +482,9 @@ function MessageItem({
         </div>
       )}
       {propId && <ProposalCard id={propId} proposal={proposal} canEdit={canEdit} onReview={onReview} onChanged={onChanged} onApplied={onApplied} reloadProposals={reloadProposals} />}
+      <div className="msg-foot tiny" style={{ marginTop: 6 }}>
+        <CopyButton text={m.content} />
+      </div>
     </div>
   );
 }
