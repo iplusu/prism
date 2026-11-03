@@ -18,7 +18,7 @@ FOCUS = {
     "strategy": "work out the overall strategy for this paper: the core contribution and how to position it, the storyline, what evidence "
                 "is missing, what to cut or emphasise (also given the page limit), and the order of work. Where the user asks for additional "
                 "experiments or analyses, DESIGN them concretely (hypothesis, setup, data, baselines, metrics, what result would support or refute the claim, "
-                "cost, and which part of the manuscript it would change). This is a plan for the authors: nothing is run and no result is invented",
+                "cost, and which part of the manuscript it would change). This is a plan for the authors: nothing is run and no result is invented. Finish with your concrete recommendation for every point you and the others disagree on, so that the design can be settled",
     "direction": "decide in which direction and in what priority this manuscript should be revised, and what exactly to change",
 }
 AGREED_HEADING = "## AGREED CHANGES"
@@ -99,9 +99,14 @@ def moderator_messages(focus: str, request: str, rounds: list[list[dict]], main_
     ask = [
         "# Write the report with these sections",
         "## SUMMARY  (2-4 sentences: what the discussion concluded)",
-        *(["## PLAN  (the strategy and every experiment/analysis design the participants settled on, written out IN FULL and concretely: for each, "
-           "hypothesis, setup, data, baselines, metrics, what would support or refute the claim, cost, order, and the manuscript part it affects. "
-           "Keep all specifics the participants gave; do not shorten them to a summary. Mark what is contested)"] if plan else []),
+        *(["## FINAL DESIGN  (ONE integrated, ready-to-use design, not a list of opinions. Write it out IN FULL, in this order: "
+           "(1) the goal and the claim the experiments must settle; (2) the experiments in EXECUTION ORDER with dependencies and go/no-go "
+           "gates between them; for each: hypothesis, setup, data, baselines/controls, metrics, what result supports or refutes the claim, "
+           "cost/time, the manuscript part it affects; (3) every point the participants contested, DECIDED: say which option the design takes "
+           "and why, from the participants' own evidence, tagged [moderator's recommendation] and naming who argued the alternative and "
+           "when it would be the better choice; (4) total resources and a rough schedule using only figures the participants gave; "
+           "(5) main risks and what to do if a gate fails. Keep every specific the participants gave; never shorten to a summary; "
+           "never invent numbers, datasets or results)"] if plan else []),
         "## CONSENSUS  (points all active participants accept, with file:line, naming who)",
         "## DISAGREEMENTS  (points still contested: each side's position and evidence; say if it needs the authors' judgement)",
         "## DROPPED  (points one participant raised that the others rebutted, and why)",
