@@ -85,6 +85,13 @@ export const IconPanelRight = (p: P) => (
 export const IconPanelBottom = (p: P) => (
   <svg {...base(p)}><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M3 15h18" /></svg>
 );
+export const IconMore = (p: P) => (
+  <svg {...base(p)}>
+    <circle cx="5" cy="12" r="1.4" />
+    <circle cx="12" cy="12" r="1.4" />
+    <circle cx="19" cy="12" r="1.4" />
+  </svg>
+);
 export const IconSparkle = (p: P) => (
   <svg {...base(p)}><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8zM19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z" /></svg>
 );

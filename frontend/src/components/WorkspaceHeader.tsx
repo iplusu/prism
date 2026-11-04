@@ -3,12 +3,13 @@ import { Link } from "react-router-dom";
 import { api } from "../api";
 import type { CollabStatus, Peer } from "../collab";
 import type { Member, Project, ProjectStatus } from "../types";
-import { basename } from "../util";
+import { basename, useMediaQuery } from "../util";
 import { ThemeToggle, UserMenu } from "./AppHeader";
 import type { SaveState } from "./CodeEditor";
 import {
   IconBack,
   IconDownload,
+  IconMore,
   IconPanelBottom,
   IconPanelLeft,
   IconPdf,
@@ -94,6 +95,7 @@ async function downloadArxiv(pid: string, onError: (m: string) => void) {
 }
 
 export default function WorkspaceHeader(p: Props) {
+  const narrow = useMediaQuery("(max-width: 899px)");
   const pid = p.project?.id ?? "";
   const open = p.status?.open_proposals ?? p.project?.open_proposals ?? 0;
   const hasPdf = !!(p.status?.last_success_build ?? p.project?.last_success_build);
@@ -103,6 +105,80 @@ export default function WorkspaceHeader(p: Props) {
     { k: "pdf", label: "PDF preview", icon: <IconPdf /> },
     { k: "ai", label: "AI assistant", icon: <IconSparkle /> },
   ];
+  if (narrow) {
+    // One row on a phone: back, name, Compile, Review, and a "more" menu for everything else.
+    return (
+      <header className="ws-header ws-header-narrow">
+        <Link to="/" className="icon-btn" aria-label="Back to projects" title="All projects">
+          <IconBack />
+        </Link>
+        <h1 className="ws-title ellipsis" title={p.project?.name}>
+          {p.project?.name ?? "…"}
+        </h1>
+        <span className={`save-ind tone-${p.saveIndicator.tone}`} title={p.saveIndicator.title ?? p.saveIndicator.text} role="status" aria-live="polite" aria-label={p.saveIndicator.text}>
+          <span className="dot" aria-hidden="true" />
+        </span>
+        <div className="spacer" />
+        {p.canEdit && (
+          <button className="btn btn-primary" onClick={p.onCompile} disabled={p.compiling} aria-describedby={p.compileError ? "compile-err" : undefined}>
+            {p.compiling ? <Spinner label="Compiling" /> : <IconPlay />} <span>Compile</span>
+          </button>
+        )}
+        <Link to={`/p/${pid}/review`} className="btn" aria-label={`Review changes${open ? ` (${open} open)` : ""}`}>
+          <IconReview />
+          {open > 0 && <span className="count warn">{open}</span>}
+        </Link>
+        <Menu label="More" align="right" buttonClass="btn btn-ghost" buttonContent={<IconMore />}>
+          {(close) => (
+            <div className="menu-list">
+              <div className="menu-info">
+                <strong>{p.project?.name}</strong>
+                <span className="muted small">{p.saveIndicator.text}</span>
+              </div>
+              <div className="menu-sep" />
+              {p.canEdit && (
+                <>
+                  <button className="menu-item" role="switch" aria-checked={p.autoCompile} onClick={p.onToggleAutoCompile}>
+                    Auto compile: {p.autoCompile ? "on" : "off"}
+                  </button>
+                  <button className="menu-item" role="switch" aria-checked={p.compileCurrent} onClick={p.onToggleCompileCurrent}>
+                    {p.compileCurrent ? `Compile the open file (${p.compileTarget ?? "…"})` : `Compile the main file (${p.mainFile ?? "…"})`}
+                  </button>
+                  <div className="menu-sep" />
+                </>
+              )}
+              <a className="menu-item" href={api.exportZipUrl(pid)} download onClick={close}>
+                Export source files (.zip)
+              </a>
+              <button className="menu-item" onClick={() => { close(); void downloadArxiv(pid, p.onExportError); }}>
+                Export arXiv source (.zip)
+              </button>
+              {hasPdf ? (
+                <a className="menu-item" href={api.exportPdfUrl(pid)} download onClick={close}>
+                  Export last successful PDF
+                </a>
+              ) : (
+                <span className="menu-item disabled muted">PDF: compile successfully first</span>
+              )}
+              <div className="menu-sep" />
+              <Link className="menu-item" to={`/p/${pid}/settings?tab=members`}>
+                Members{p.peers.length > 0 ? ` (${p.peers.length} online)` : ""}…
+              </Link>
+              <Link className="menu-item" to={`/p/${pid}/settings?tab=project`}>
+                Project settings…
+              </Link>
+            </div>
+          )}
+        </Menu>
+        <UserMenu />
+        {p.compileError && (
+          <span id="compile-err" className="text-bad small compile-err" role="alert">
+            {p.compileError}
+          </span>
+        )}
+      </header>
+    );
+  }
   return (
     <header className="ws-header">
       <Link to="/" className="icon-btn" aria-label="Back to projects" title="All projects">

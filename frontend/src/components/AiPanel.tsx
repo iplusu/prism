@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, ApiError } from "../api";
 import type { ChatMessage, DiscussionStatement, Proposal, Task, TaskContextSpec, TaskMode } from "../types";
-import { MODE_LABELS, modeLabel, relTime, useAction, useAsync } from "../util";
+import { MODE_LABELS, modeLabel, relTime, useAction, useAsync, useMediaQuery } from "../util";
 import type { SelectionInfo } from "./CodeEditor";
 import { IconReview, IconRetry, IconStop, IconUpload } from "./Icons";
 import { EventList, executorFromEvents, isActive, LiveDot, useTaskStream } from "./TaskProgress";
@@ -142,6 +142,7 @@ export default function AiPanel(p: Props) {
 
   const [reviewOpen, setReviewOpen] = useState(false);
   const [persona, setPersona] = useState("");
+  const narrow = useMediaQuery("(max-width: 899px)");
   // One switch for every request: also answer in Korean. On by default for a Korean browser.
   const [dKorean, setDKorean] = useState(() => (navigator.language || "").toLowerCase().startsWith("ko"));
   const KO_ASK = "\n\nAlso give the complete answer in Korean (한국어), as a last section.";
@@ -242,6 +243,7 @@ export default function AiPanel(p: Props) {
       </div>
       {p.canEdit ? (
         <form className="ai-input" onSubmit={submit}>
+          <Fold narrow={narrow}>
           <label className="check-row tiny" title="Every request below (chat, analysis presets, reviewer report, discussion) also gets a Korean version of the answer">
             <input type="checkbox" checked={dKorean} onChange={(e) => setDKorean(e.target.checked)} /> Also answer in Korean (한국어)
           </label>
@@ -350,6 +352,7 @@ export default function AiPanel(p: Props) {
               <ErrorBox error={startDiscuss.error} />
             </div>
           )}
+          </Fold>
           <ErrorBox error={preset.error} />
           <fieldset className="ctx-select">
             <legend className="sr-only">Context</legend>
@@ -573,6 +576,17 @@ function SaveDiscussion({ pid, m, onSaved }: { pid: string; m: ChatMessage; onSa
       {saved && <span className="muted tiny">{saved}</span>}
       {save.error && <span className="tiny" style={{ color: "var(--danger, #b00020)" }}>{save.error}</span>}
     </div>
+  );
+}
+
+/** On a phone the presets, reviewer report and discussion fold away so the chat keeps the room. */
+function Fold({ narrow, children }: { narrow: boolean; children: ReactNode }) {
+  if (!narrow) return <>{children}</>;
+  return (
+    <details className="ai-extras">
+      <summary>Presets, reviewer report, discussion</summary>
+      {children}
+    </details>
   );
 }
 

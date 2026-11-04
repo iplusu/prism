@@ -201,7 +201,7 @@ Compilation, verification, diff, apply and collaborative editing all work for re
 
 Implemented and verified (evidence in [docs/verification.md](docs/verification.md)):
 
-- Project home, workspace, change review and settings screens (light/dark, tabbed layout on narrow screens, resizable/collapsible panels)
+- Project home, workspace, change review and settings screens (light/dark, tabbed layout on narrow screens with a one-row header, finger-sized touch targets and a folded AI toolbox; resizable/collapsible panels). Installable as an app (PWA: manifest, icons, a service worker that caches nothing, so there is no offline mode); HTTPS is needed for the install prompt
 - Safe ZIP import, per-project permissions, CSRF protection
 - Isolated real LaTeX compilation, last successful PDF kept on failure, stale indicator
 - Orchestrator LLM client, 5-step connection test, schema validation and re-prompting, direct answers / direct edit proposals / delegation to external tools

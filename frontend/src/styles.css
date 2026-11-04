@@ -2295,3 +2295,34 @@ td.row-actions {
 .copy-btn:hover, .copy-btn:focus-visible { border-color: var(--border); background: var(--bg-subtle); color: var(--fg); }
 .copy-btn.copy-failed { color: var(--danger); }
 .review-one .copy-btn { margin: 6px 0 0; }
+
+/* Phone and touch screens: finger-sized targets, a one-row workspace header, a folded AI toolbox. */
+@media (max-width: 899px), (pointer: coarse) {
+  .icon-btn { width: 40px; height: 40px; }
+  .icon-btn.sm { width: 36px; height: 36px; }
+  .btn { min-height: 40px; }
+  .btn-sm { min-height: 36px; }
+  .tab, .seg-btn { min-height: 40px; }
+  .menu-item { padding: 11px 12px; }
+  select, input:not([type="checkbox"]):not([type="radio"]) { min-height: 40px; }
+  .check-row { min-height: 40px; }
+  .check-row input[type="checkbox"] { width: 20px; height: 20px; }
+  .tree-row { min-height: 40px; }
+  .file-tab-btn { padding: 10px 6px 10px 12px; }
+  .file-tab-close { padding: 10px 12px 10px 6px; }
+  .pdf-toolbar { gap: 4px; min-height: 44px; }
+  .link-btn { padding: 8px 4px; }
+  /* touch has no hover: show the actions of the open file */
+  .tree-row-wrap.active .tree-actions { display: inline-flex; }
+}
+@media (max-width: 899px) {
+  .ws-header-narrow { flex-wrap: wrap; gap: 4px; padding: 4px 8px; }
+  .ws-header-narrow .ws-title { flex: 1 1 0; min-width: 0; max-width: none; margin: 0 2px; }
+  .ws-header-narrow .spacer { display: none; }
+  .ws-header-narrow .compile-err { flex-basis: 100%; }
+  .ai-extras { border: 1px solid var(--border); border-radius: var(--radius); padding: 0 8px; }
+  .ai-extras > summary { cursor: pointer; padding: 10px 0; font-size: 13px; color: var(--fg-muted); }
+  .ai-extras[open] > summary { border-bottom: 1px solid var(--border); margin-bottom: 8px; }
+  .ai-extras[open] { display: flex; flex-direction: column; gap: 6px; padding-bottom: 8px; }
+  .ai-input textarea { min-height: 44px; }
+}
