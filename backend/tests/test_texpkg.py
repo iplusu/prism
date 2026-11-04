@@ -107,3 +107,14 @@ def test_auto_install_is_off_when_disabled(alice, monkeypatch):
         nb = alice.post(f"/api/projects/{pid}/builds").json()
         drain()
         assert alice.get(f"/api/builds/{nb['id']}").json()["status"] == "failed"
+
+
+def test_a_missing_font_metric_is_found_in_the_log():
+    log = ("mktextfm: `mf-nowin -progname=mf ... input pzcmi8r' failed to make pzcmi8r.tfm.\n"
+           "./main.tex:118: Font \\csname\\endcsname=pzcmi8r at 8.99199pt not loadable: Metric (TFM) file not found.\n"
+           "! LaTeX Error: File `titlesec.sty' not found.\n"
+           "Font \\x=cmr10 at 9pt not loadable: Metric (TFM) file not found.")
+    assert texpkg.missing_files(log) == ["pzcmi8r.tfm", "titlesec.sty", "cmr10.tfm"]
+    assert texpkg.is_safe_file("pzcmi8r.tfm") and not texpkg.is_safe_file("../a.tfm")
+    out = "zapfchan:\n\ttexmf-dist/fonts/tfm/adobe/zapfchan/pzcmi8r.tfm\ntex4ht:\n\ttexmf-dist/tex4ht/ht-fonts/alias/adobe/zapfdingbats/pzcmi8r.htf\n"
+    assert texpkg.parse_search(out, "pzcmi8r.tfm") == ["zapfchan"]

@@ -1,4 +1,4 @@
-"""Missing LaTeX packages: find what a failed build asked for and install it with tlmgr.
+"""Missing LaTeX packages (and font metrics): find what a failed build asked for and install it with tlmgr.
 
 Only a file name that a real build log of the project reported as "not found" is resolved, through
 `tlmgr search --global --file`, to a package of the official TeX Live repository; only that package
@@ -17,7 +17,9 @@ from .compile.latex import tex_bin_dir
 
 # `! LaTeX Error: File `titlesec.sty' not found.`  (also .cls, .def, ...), plus the pdfTeX/biber style
 _MISSING = re.compile(r"LaTeX Error: File [`'\"]([A-Za-z0-9._+-]+\.(?:sty|cls|clo|def|cfg|fd|bst|bbx|cbx|lbx|ldf|tex))['\"] not found")
-_SAFE_FILE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+-]{0,80}\.(?:sty|cls|clo|def|cfg|fd|bst|bbx|cbx|lbx|ldf|tex)$")
+# a font metric the build could not load: `... failed to make pzcmi8r.tfm` (mktextfm) or `Font \x=pzcmi8r at 9pt not loadable: Metric (TFM) file not found`
+_MISSING_TFM = re.compile(r"failed to make ([A-Za-z0-9._+-]+\.tfm)|=([A-Za-z0-9._+-]+) at [0-9.]+pt not loadable: Metric \(TFM\) file not found")
+_SAFE_FILE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+-]{0,80}\.(?:sty|cls|clo|def|cfg|fd|bst|bbx|cbx|lbx|ldf|tex|tfm)$")
 _PKG = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+-]{0,60}$")
 _lock = threading.Lock()  # one tlmgr at a time (it locks the installation itself)
 
@@ -30,10 +32,13 @@ class TexPackageError(RuntimeError):
 
 def missing_files(log: str) -> list[str]:
     """Files a build reported as missing, in order of first appearance."""
+    found: list[tuple[int, str]] = [(m.start(), m.group(1)) for m in _MISSING.finditer(log or "")]
+    for m in _MISSING_TFM.finditer(log or ""):
+        found.append((m.start(), m.group(1) or m.group(2) + ".tfm"))
     seen: list[str] = []
-    for m in _MISSING.finditer(log or ""):
-        if m.group(1) not in seen:
-            seen.append(m.group(1))
+    for _, name in sorted(found):
+        if name not in seen and is_safe_file(name):
+            seen.append(name)
     return seen
 
 

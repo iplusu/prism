@@ -107,7 +107,7 @@ function FailedBuildHelp({ pid, build, canEdit, onInstall, onTaskCreated }: { pi
       {missing.map((f) => (
         <div key={f} className="build-help-row">
           <span>
-            Missing LaTeX file <code>{f}</code>: it belongs to a TeX package that is not installed on this server.
+            {f.endsWith(".tfm") ? "Missing font metric" : "Missing LaTeX file"} <code>{f}</code>: it belongs to a TeX package that is not installed on this server. Editing the manuscript will not fix it.
           </span>
           <button className="btn btn-sm btn-primary" disabled={install.busy} onClick={() => void install.run(f)}>
             {install.busy ? "Installing…" : "Install package and recompile"}
