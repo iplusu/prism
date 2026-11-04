@@ -30,6 +30,7 @@ class ReviewIn(BaseModel):
     tools: list[Literal["codex", "claude", "antigravity"]] | None = None  # default: every tool that is allowed and available
     persona: str = Field(default="", max_length=2000)  # shared by all reviewers, e.g. "an ACL area chair"
     personas: dict[Literal["codex", "claude", "antigravity"], str] = Field(default_factory=dict)  # per-tool override
+    korean: bool | None = None  # also write the consolidated report in Korean; default: only when the request itself is Korean
 
     @field_validator("personas")
     @classmethod
@@ -45,6 +46,7 @@ class DiscussIn(BaseModel):
     focus: Literal["review", "direction", "strategy", "experiments"] = "review"
     rounds: int = Field(default=2, ge=1, le=3)
     persona: str = Field(default="", max_length=2000)
+    korean: bool | None = None  # also write the report in Korean; default: only when the request itself is Korean
     apply: bool | None = None  # turn the agreed changes into a proposal (still verified and applied only by the user); default: yes, except for a strategy discussion
 
 

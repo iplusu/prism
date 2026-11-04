@@ -296,7 +296,7 @@ class Runner:
         if s.llm_usable:
             self.emit("llm", f"consolidating {sum(r['status'] == 'succeeded' for r in reviews)} review(s) with {active_model()}")
             try:
-                merged = reviewers.synthesize(get_provider(), reviewers.synthesis_messages(t.request, personas, reviews, self.project.main_file))
+                merged = reviewers.synthesize(get_provider(), reviewers.synthesis_messages(t.request, personas, reviews, self.project.main_file, spec.get("korean")))
             except LLMError as e:
                 note = f"The orchestrator could not consolidate the reviews ({e.message}); the individual reviews follow unmerged."
         else:
@@ -361,6 +361,7 @@ class Runner:
         focus = spec.get("focus") if spec.get("focus") in discussion.FOCUS else "review"
         total = max(1, min(int(spec.get("rounds") or 2), 3))
         apply = bool(spec["apply"]) if spec.get("apply") is not None else focus not in ("strategy", "experiments")
+        korean = bool(spec["korean"]) if spec.get("korean") is not None else discussion._has_hangul(t.request)
         shared = (spec.get("persona") or "").strip()
         names = {x: reviewers.LABELS.get(x, x) for x in use}
         self.set_status("running")
@@ -408,8 +409,8 @@ class Runner:
         delivered = [[r for r in stm if r["status"] == "succeeded"] for stm in rounds]
         self.emit("llm", f"moderating with {active_model()}")
         try:
-            report = reviewers.synthesize(get_provider(), discussion.moderator_messages(focus, t.request, delivered, self.project.main_file, apply),
-                                         min_tokens=(14_000 if focus == "experiments" else 8_000) + (6_000 if discussion._has_hangul(t.request) else 0))
+            report = reviewers.synthesize(get_provider(), discussion.moderator_messages(focus, t.request, delivered, self.project.main_file, apply, korean),
+                                         min_tokens=(14_000 if focus == "experiments" else 8_000) + (6_000 if korean else 0))
         except LLMError as e:
             raise RuntimeError(f"the moderator could not write the report: {e.message}") from e
         body, agreed = discussion.split_agreed(report)

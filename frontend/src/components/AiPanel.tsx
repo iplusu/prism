@@ -131,7 +131,7 @@ export default function AiPanel(p: Props) {
           : { scope: "project" };
     const ctx: TaskContextSpec = saved.length ? { ...base, attachments: saved } : base;
     const request = saved.length ? `${text.trim()}\n\nAttached files (saved in the project):\n${saved.map((s) => `- ${s}`).join("\n")}` : text.trim();
-    const t = await api.createTask(p.pid, request, mode, ctx);
+    const t = await api.createTask(p.pid, withKo(request), mode, ctx);
     if (saved.length) p.onApplied(saved);
     setAttached([]);
     setText("");
@@ -142,6 +142,10 @@ export default function AiPanel(p: Props) {
 
   const [reviewOpen, setReviewOpen] = useState(false);
   const [persona, setPersona] = useState("");
+  // One switch for every request: also answer in Korean. On by default for a Korean browser.
+  const [dKorean, setDKorean] = useState(() => (navigator.language || "").toLowerCase().startsWith("ko"));
+  const KO_ASK = "\n\nAlso give the complete answer in Korean (한국어), as a last section.";
+  const withKo = (s: string) => (dKorean && !/[\uac00-\ud7a3]/.test(s) ? s + KO_ASK : s);
   const [reviewTools, setReviewTools] = useState<Record<string, boolean>>({});
   const sys = useAsync(() => (reviewOpen ? api.system() : Promise.resolve(null)), [reviewOpen]);
   const reviewers = useMemo(
@@ -154,7 +158,7 @@ export default function AiPanel(p: Props) {
       p.pid,
       persona.trim() ? `Reviewer report as: ${persona.trim()}` : "Reviewer report",
       "llm",
-      { scope: "project", review: { tools: chosen, persona: persona.trim() } },
+      { scope: "project", review: { tools: chosen, persona: persona.trim(), korean: dKorean } },
     );
     tasks.setData([t, ...(tasks.data ?? [])]);
     setReviewOpen(false);
@@ -182,7 +186,7 @@ export default function AiPanel(p: Props) {
         : dFocus === "experiments" ? "Tool discussion: design the additional experiments" : "Tool discussion: decide the revision direction")
         + (dAsk.trim() ? `\n\n${dAsk.trim()}` : ""),
       "llm",
-      { scope: "project", discuss: { tools: dChosen, focus: dFocus, rounds: dRounds, persona: dPersona.trim(), apply: dApply } },
+      { scope: "project", discuss: { tools: dChosen, focus: dFocus, rounds: dRounds, persona: dPersona.trim(), apply: dApply, korean: dKorean } },
     );
     tasks.setData([t, ...(tasks.data ?? [])]);
     setDiscussOpen(false);
@@ -190,7 +194,7 @@ export default function AiPanel(p: Props) {
   });
 
   const preset = useAction(async (prompt: string) => {
-    const t = await api.createTask(p.pid, prompt, "llm", { scope: "project", answer_only: true });
+    const t = await api.createTask(p.pid, withKo(prompt), "llm", { scope: "project", answer_only: true });
     tasks.setData([t, ...(tasks.data ?? [])]);
     refreshAll();
   });
@@ -238,6 +242,9 @@ export default function AiPanel(p: Props) {
       </div>
       {p.canEdit ? (
         <form className="ai-input" onSubmit={submit}>
+          <label className="check-row tiny" title="Every request below (chat, analysis presets, reviewer report, discussion) also gets a Korean version of the answer">
+            <input type="checkbox" checked={dKorean} onChange={(e) => setDKorean(e.target.checked)} /> Also answer in Korean (한국어)
+          </label>
           <div className="presets" role="group" aria-label="Analysis presets (answer only, nothing is changed)">
             {PRESETS.map((x) => (
               <button type="button" key={x.id} className="btn btn-sm" title={x.title} disabled={send.busy || preset.busy} onClick={() => void preset.run(x.prompt)}>
@@ -262,6 +269,9 @@ export default function AiPanel(p: Props) {
                   </label>
                 );
               })}
+              <label className="check-row">
+                <input type="checkbox" checked={dKorean} onChange={(e) => setDKorean(e.target.checked)} /> Also write the report in Korean (한국어)
+              </label>
               <label className="field">
                 <span className="tiny muted">Reviewer persona (optional): who should the reviewers be?</span>
                 <input value={persona} maxLength={2000} placeholder="e.g. an ACL area chair who cares about reproducibility" onChange={(e) => setPersona(e.target.value)} />
@@ -316,6 +326,9 @@ export default function AiPanel(p: Props) {
               </label>
               <label className="check-row">
                 <input type="checkbox" checked={dApply} onChange={(e) => setDApply(e.target.checked)} /> Turn the agreed changes into a proposal (you still review and apply it)
+              </label>
+              <label className="check-row">
+                <input type="checkbox" checked={dKorean} onChange={(e) => setDKorean(e.target.checked)} /> Also write the report in Korean (한국어)
               </label>
               <label className="field">
                 <span className="tiny muted">What the tools should work on (optional; they all receive it, e.g. "design the additional experiments")</span>

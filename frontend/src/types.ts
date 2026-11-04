@@ -193,9 +193,9 @@ export interface TaskContextSpec {
   /** Files the user attached; saved in the project under attachments/ before the task starts. */
   attachments?: string[];
   /** Reviewer report: independent read-only reviews by several tools, merged by the orchestrator. */
-  review?: { tools?: string[]; persona?: string; personas?: Record<string, string> };
+  review?: { tools?: string[]; persona?: string; personas?: Record<string, string>; korean?: boolean };
   /** Tool discussion: the tools answer each other over rounds; the agreed changes can become a proposal. */
-  discuss?: { tools?: string[]; focus?: "review" | "direction" | "strategy" | "experiments"; rounds?: number; persona?: string; apply?: boolean };
+  discuss?: { tools?: string[]; focus?: "review" | "direction" | "strategy" | "experiments"; rounds?: number; persona?: string; apply?: boolean; korean?: boolean };
 }
 
 export interface DiscussionStatement {

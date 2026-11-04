@@ -130,7 +130,7 @@ SYNTH_SYSTEM = (
 )
 
 
-def synthesis_messages(request: str, personas: dict[str, str], reviews: list[dict], main_file: str) -> list[dict]:
+def synthesis_messages(request: str, personas: dict[str, str], reviews: list[dict], main_file: str, korean: bool | None = None) -> list[dict]:
     parts = []
     for r in reviews:
         name = LABELS.get(r["tool"], r["tool"])
@@ -149,7 +149,9 @@ def synthesis_messages(request: str, personas: dict[str, str], reviews: list[dic
         "4. Where the reviewers disagree\n"
         "5. Prioritized improvement plan: numbered, most important first; each item says what to change and where\n"
         "6. Reviewers that did not deliver\n"
-        "Reply in the language of the manuscript."
+        + ("7. 한국어: the SAME report again in Korean (same points, same names, file:line references and numbers; add nothing, drop nothing)\n"
+           if (korean if korean is not None else any("\uac00" <= c <= "\ud7a3" for c in request or "")) else "")
+        + "Reply in the language of the manuscript."
     )
     return [{"role": "system", "content": SYNTH_SYSTEM}, {"role": "user", "content": user}]
 

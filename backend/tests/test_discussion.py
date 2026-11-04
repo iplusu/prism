@@ -265,3 +265,23 @@ def test_a_korean_request_gets_a_korean_version_of_the_report(alice, llm):
     assert ko.index("## 한국어") < ko.index("AGREED CHANGES")
     assert "최종 설계" in discussion.moderator_messages("strategy", "전략", stm, "main.tex", False)[-1]["content"]
     assert "실험 프로토콜" in discussion.moderator_messages("experiments", "실험", stm, "main.tex", False)[-1]["content"]
+
+
+def test_korean_can_be_asked_for_explicitly_and_switched_off(alice, llm):
+    from app.agent import discussion
+
+    stm = [[{"tool": "codex", "label": "Codex", "status": "succeeded", "text": "x"}]]
+    # an English request (e.g. a preset) still gets the Korean version when the option is on
+    assert "## 한국어" in discussion.moderator_messages("review", "review it", stm, "main.tex", True, True)[-1]["content"]
+    # and an explicit "no" wins over Hangul in the request
+    assert "## 한국어" not in discussion.moderator_messages("review", "검토", stm, "main.tex", True, False)[-1]["content"]
+
+
+def test_reviewer_report_can_also_be_written_in_korean():
+    from app.agent import reviewers
+
+    rv = [{"tool": "codex", "status": "succeeded", "text": "x", "error": ""}]
+    on = reviewers.synthesis_messages("Reviewer report", {}, rv, "main.tex", True)[-1]["content"]
+    off = reviewers.synthesis_messages("검토해 줘", {}, rv, "main.tex", False)[-1]["content"]
+    default_en = reviewers.synthesis_messages("Reviewer report", {}, rv, "main.tex")[-1]["content"]
+    assert "한국어" in on and "한국어" not in off and "한국어" not in default_en
