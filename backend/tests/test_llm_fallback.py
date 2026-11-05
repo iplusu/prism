@@ -142,3 +142,13 @@ def test_a_primary_that_works_is_not_touched_and_no_backup_means_no_wrapper(serv
     assert prov.get_provider().chat([{"role": "user", "content": "x"}]).model == "primary-model" and not backup.requests
     set_env(LLM_BASE_URL=primary.url, LLM_MODEL="primary-model", LLM_FALLBACK_BASE_URL="", LLM_FALLBACK_MODEL="")
     assert not isinstance(prov.get_provider(), prov.FailoverProvider)
+
+
+def test_the_model_list_works_through_the_failover_wrapper(servers, alice):
+    # regression: the wrapper inherited list_models() from the base class (NotImplementedError), so the editor's "AI complete" showed "error"
+    primary, backup = servers
+    _env(primary.url, backup.url)
+    assert isinstance(prov.get_provider(), prov.FailoverProvider)
+    assert prov.get_provider().list_models()
+    r = alice.get("/api/complete/models")
+    assert r.status_code == 200 and r.json()["models"], r.text

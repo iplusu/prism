@@ -267,8 +267,17 @@ class FailoverProvider(LLMProvider):
     def __init__(self, primary: LLMProvider, backup: LLMProvider):
         self.primary, self.backup = primary, backup
 
-    def __getattr__(self, name):  # model, base_url, list_models ... belong to the primary
+    def __getattr__(self, name):  # model, base_url ... belong to the primary
         return getattr(self.primary, name)
+
+    def list_models(self) -> list[dict]:  # defined here: the base class has a method of this name, so __getattr__ would never be reached
+        try:
+            return self.primary.list_models()
+        except LLMError as e:
+            if not _failover_worthy(e):
+                raise
+            self._down(e)
+        return self.backup.list_models()
 
     def _down(self, e: LLMError) -> None:
         with _probe_lock:
