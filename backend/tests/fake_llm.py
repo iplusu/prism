@@ -18,6 +18,7 @@ class FakeLLM:
         self.script: list = []  # queued replies for /chat/completions: dict (message) or callable or ("sleep", s)
         self.requests: list[dict] = []
         self.status_override: int | None = None
+        self.post_status: int | None = None  # chat requests fail with this code while GET /models still answers (a balancer)
         fake = self
 
         class H(BaseHTTPRequestHandler):
@@ -43,8 +44,8 @@ class FakeLLM:
                 n = int(self.headers.get("Content-Length", 0))
                 req = json.loads(self.rfile.read(n) or b"{}")
                 fake.requests.append(req)
-                if fake.status_override:
-                    return self._send(fake.status_override, {"error": "denied"})
+                if fake.status_override or fake.post_status:
+                    return self._send(fake.status_override or fake.post_status, {"error": "denied"})
                 if req.get("stream"):
                     self.send_response(200)
                     self.send_header("Content-Type", "text/event-stream")

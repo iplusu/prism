@@ -11,6 +11,7 @@ registering it in `PROVIDERS`.
 from __future__ import annotations
 
 import json
+import logging
 import threading
 import time
 from collections.abc import Iterator
@@ -20,6 +21,8 @@ import httpx
 
 from ..config import get_settings
 from ..security.redact import redact
+
+log = logging.getLogger(__name__)
 
 
 class LLMError(RuntimeError):
@@ -200,7 +203,8 @@ PROVIDERS: dict[str, type[LLMProvider]] = {"openai": OpenAICompatibleProvider}
 # while; while it is unreachable every LLM call goes to the backup, and the primary is tried again after the TTL.
 _PROBE_OK_TTL = 30.0
 _PROBE_DOWN_TTL = 30.0
-_probe: dict = {"at": 0.0, "up": True}
+_FAIL_TTL = 120.0  # how long the primary is skipped after a real request to it failed (the probe alone cannot see this)
+_probe: dict = {"at": 0.0, "up": True, "ttl": None}
 _probe_lock = threading.Lock()
 
 
@@ -218,7 +222,7 @@ def primary_up() -> bool:
     if not s.llm_fallback_configured or not s.llm_configured:
         return True
     with _probe_lock:
-        ttl = _PROBE_OK_TTL if _probe["up"] else _PROBE_DOWN_TTL
+        ttl = _probe.get("ttl") or (_PROBE_OK_TTL if _probe["up"] else _PROBE_DOWN_TTL)
         if time.monotonic() - _probe["at"] < ttl:
             return bool(_probe["up"])
         try:
@@ -227,7 +231,7 @@ def primary_up() -> bool:
             up = True
         except Exception:
             up = False
-        _probe.update(at=time.monotonic(), up=up)
+        _probe.update(at=time.monotonic(), up=up, ttl=None)
         return up
 
 
@@ -246,7 +250,53 @@ def context_chars() -> int:
 
 
 def reset_probe() -> None:
-    _probe.update(at=0.0, up=True)
+    _probe.update(at=0.0, up=True, ttl=None)
+
+
+def _failover_worthy(e: LLMError) -> bool:
+    """The balancer or the server did not serve the request at all (not "it took long", not "it answered badly")."""
+    return e.kind in ("connect", "dns", "tls") or (e.kind == "http" and e.status in (502, 503, 504))
+
+
+class FailoverProvider(LLMProvider):
+    """The primary, with the backup behind it for the case where the primary's server answers 502/503/504 or cannot be
+    reached while a request is already under way (the probe only sees a server that is down, not a balancer that
+    answers /models and then fails the chat). The request is repeated once on the backup and the primary is skipped
+    for a while. Timeouts do not fail over: the primary may still be working on it and a second wait would double."""
+
+    def __init__(self, primary: LLMProvider, backup: LLMProvider):
+        self.primary, self.backup = primary, backup
+
+    def __getattr__(self, name):  # model, base_url, list_models ... belong to the primary
+        return getattr(self.primary, name)
+
+    def _down(self, e: LLMError) -> None:
+        with _probe_lock:
+            _probe.update(at=time.monotonic(), up=False, ttl=_FAIL_TTL)
+        log.warning("primary LLM failed (%s%s); repeating the request on the backup and skipping the primary for %ds",
+                    e.kind, f" {e.status}" if e.status else "", int(_FAIL_TTL))
+
+    def chat(self, messages, **kw) -> ChatResult:
+        try:
+            return self.primary.chat(messages, **kw)
+        except LLMError as e:
+            if not _failover_worthy(e):
+                raise
+            self._down(e)
+        return self.backup.chat(messages, **kw)
+
+    def chat_stream(self, messages, **kw) -> Iterator[str]:
+        started = False
+        try:
+            for piece in self.primary.chat_stream(messages, **kw):
+                started = True
+                yield piece
+            return
+        except LLMError as e:
+            if started or not _failover_worthy(e):
+                raise
+            self._down(e)
+        yield from self.backup.chat_stream(messages, **kw)
 
 
 def get_provider() -> LLMProvider:
@@ -255,4 +305,7 @@ def get_provider() -> LLMProvider:
         raise LLMError("not_configured", "LLM_BASE_URL and LLM_MODEL must be set")
     if s.llm_fallback_configured and (not s.llm_configured or not primary_up()):
         return _build(s.llm_fallback_base_url, s.llm_fallback_model, s.llm_fallback_api_key)
-    return _build(s.llm_base_url, s.llm_model, s.llm_api_key)
+    primary = _build(s.llm_base_url, s.llm_model, s.llm_api_key)
+    if s.llm_fallback_configured:
+        return FailoverProvider(primary, _build(s.llm_fallback_base_url, s.llm_fallback_model, s.llm_fallback_api_key))
+    return primary

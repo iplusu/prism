@@ -99,3 +99,46 @@ def test_system_status_shows_the_backup_without_its_address(alice, servers):
     c = _llm_config()
     assert c["fallback"] == {"configured": True, "model": "backup-model", "context_chars": 30000, "in_use": True}
     assert backup.url not in str(c["fallback"])
+
+
+@pytest.mark.parametrize("code", [502, 503, 504])
+def test_a_502_from_the_balancer_repeats_the_request_on_the_backup(servers, code):
+    """GET /models still answers (the probe says "up") but the chat fails: the request is repeated once on the backup,
+    the primary is skipped for a while, and the primary comes back after that."""
+    primary, backup = servers
+    _env(primary.url, backup.url)
+    primary.post_status = code
+    p = prov.get_provider()
+    assert isinstance(p, prov.FailoverProvider) and p.model == "primary-model"
+    r = p.chat([{"role": "user", "content": "ping"}])
+    assert r.model == "backup-model" and len(primary.requests) == 1 and len(backup.requests) == 1
+    assert prov.using_fallback()  # the primary is skipped now: the next call goes straight to the backup
+    prov.get_provider().chat([{"role": "user", "content": "again"}])
+    assert len(primary.requests) == 1 and len(backup.requests) == 2
+
+
+def test_other_errors_do_not_fail_over(servers):
+    primary, backup = servers
+    _env(primary.url, backup.url)
+    for code in (400, 401, 429, 500):
+        primary.post_status = code
+        with pytest.raises(prov.LLMError) as e:
+            prov.get_provider().chat([{"role": "user", "content": "x"}])
+        assert e.value.status == code
+    assert not backup.requests and not prov.using_fallback()
+
+
+def test_a_streaming_request_fails_over_before_the_first_piece_only(servers):
+    primary, backup = servers
+    _env(primary.url, backup.url)
+    primary.post_status = 502
+    assert "".join(prov.get_provider().chat_stream([{"role": "user", "content": "hi"}])) == "pong"
+    assert len(backup.requests) == 1
+
+
+def test_a_primary_that_works_is_not_touched_and_no_backup_means_no_wrapper(servers):
+    primary, backup = servers
+    _env(primary.url, backup.url)
+    assert prov.get_provider().chat([{"role": "user", "content": "x"}]).model == "primary-model" and not backup.requests
+    set_env(LLM_BASE_URL=primary.url, LLM_MODEL="primary-model", LLM_FALLBACK_BASE_URL="", LLM_FALLBACK_MODEL="")
+    assert not isinstance(prov.get_provider(), prov.FailoverProvider)
