@@ -2340,3 +2340,9 @@ td.row-actions {
 @media (max-width: 560px) { .skill-row { grid-template-columns: 1fr; } }
 .skill-row3 { grid-template-columns: 84px minmax(0, 1fr); }
 @media (max-width: 560px) { .skill-row3 { grid-template-columns: 1fr; } }
+
+.push-toast { position: fixed; left: 16px; bottom: 16px; z-index: 60; max-width: min(420px, calc(100vw - 32px)); display: flex; gap: 8px; align-items: flex-start; padding: 10px 12px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--bg-elev, var(--bg)); box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18); }
+.push-toast.ok { border-left: 4px solid var(--ok, #1a7f37); }
+.push-toast.bad { border-left: 4px solid var(--danger, #b00020); }
+.push-list { margin-bottom: 8px; }
+.push-list > summary { cursor: pointer; padding: 4px 0; }

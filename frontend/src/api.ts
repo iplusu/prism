@@ -34,8 +34,7 @@ import type {
   ZoteroCollection,
   ZoteroLibrary,
   ZoteroResult,
-  VersionDiff,
-} from "./types";
+  VersionDiff, PushActivity} from "./types";
 
 export class ApiError extends Error {
   status: number;
@@ -241,6 +240,7 @@ export const api = {
   redoOnCurrent: (id: string) => request<Task>(`/api/proposals/${enc(id)}/redo`, { method: "POST" }),
 
   // --- versions ---------------------------------------------------------
+  activity: (pid: string, limit = 30) => request<PushActivity[]>(`${P(pid)}/activity?limit=${limit}`),
   versions: (pid: string) => request<Version[]>(`${P(pid)}/versions`),
   saveVersion: (pid: string, label: string) =>
     request<{ revision: string; label: string }>(`${P(pid)}/versions`, { method: "POST", body: { label } }),

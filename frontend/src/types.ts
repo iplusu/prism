@@ -397,6 +397,18 @@ export interface Version {
   labels: string[];
 }
 
+/** A push made through the API (a script or an agent), merged per client within a minute. */
+export interface PushActivity {
+  id: number;
+  client: string;
+  ok: boolean;
+  count: number;
+  paths: string[];
+  error: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface VersionDiff {
   revision: string;
   files: { path: string; change: "added" | "deleted" | "modified"; hunks?: Hunk[] }[];

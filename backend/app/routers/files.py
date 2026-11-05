@@ -3,12 +3,12 @@ from __future__ import annotations
 import mimetypes
 import re
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from .. import arxiv, review
+from .. import activity, arxiv, review
 from ..agent.context import bib_entries, labels, outline
 from ..compile.latex import tex_status
 from ..config import get_settings
@@ -102,80 +102,92 @@ def raw_file(pid: str, path: str, user: User = Depends(current_user), db: Sessio
 
 
 @router.put("/files/content")
-def save_file(pid: str, body: SaveIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
+def save_file(pid: str, body: SaveIn, request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)):
     p, _ = get_project_for(db, pid, user, "editor")
     rel = _norm(body.path)
     data = body.text.encode("utf-8")
-    if len(data) > get_settings().max_text_file_mb * 1024 * 1024:
-        raise HTTPException(413, "file too large")
-    if not store.is_text(rel, data):
-        raise HTTPException(400, "not an editable text file type")
-    _apply(pid, [Change(path=rel, content=data, expected_sha=body.base_sha if body.base_sha is not None else ANY)])
-    _touch(db, p)
+    with activity.track(db, pid, user, request, rel):
+        if len(data) > get_settings().max_text_file_mb * 1024 * 1024:
+            raise HTTPException(413, "file too large")
+        if not store.is_text(rel, data):
+            raise HTTPException(400, "not an editable text file type")
+        _apply(pid, [Change(path=rel, content=data, expected_sha=body.base_sha if body.base_sha is not None else ANY)])
+        _touch(db, p)
     return {"path": rel, "sha": store.sha256(data)}
 
 
 @router.post("/files")
-def create_file(pid: str, body: CreateIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
+def create_file(pid: str, body: CreateIn, request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)):
     p, _ = get_project_for(db, pid, user, "editor")
     rel = _norm(body.path)
     data = body.text.encode("utf-8")
-    if not store.is_text(rel, data):
-        raise HTTPException(400, "only text files can be created here; use upload for other files")
-    _apply(pid, [Change(path=rel, content=data, expected_sha=None)])
-    _touch(db, p)
+    with activity.track(db, pid, user, request, rel):
+        if not store.is_text(rel, data):
+            raise HTTPException(400, "only text files can be created here; use upload for other files")
+        _apply(pid, [Change(path=rel, content=data, expected_sha=None)])
+        _touch(db, p)
     return {"path": rel, "sha": store.sha256(data)}
 
 
 @router.post("/files/upload")
-def upload(pid: str, file: UploadFile = File(...), directory: str = Form(""), overwrite: bool = Form(True),
+def upload(pid: str, request: Request, file: UploadFile = File(...), directory: str = Form(""), overwrite: bool = Form(True),
            user: User = Depends(current_user), db: Session = Depends(get_db)):
     p, _ = get_project_for(db, pid, user, "editor")
     name = (file.filename or "upload").rsplit("/", 1)[-1]
     rel = _norm(f"{directory.strip('/')}/{name}" if directory.strip("/") else name)
     limit = get_settings().max_upload_mb * 1024 * 1024
     data = file.file.read(limit + 1)
-    if len(data) > limit:
-        raise HTTPException(413, "file too large")
-    live = _live(pid)
-    if not overwrite and rel in live:
-        raise HTTPException(409, f"{rel} already exists")  # the web UI asks before replacing; API clients overwrite by default
-    if rel in live and live[rel] != data:
-        # writes only reach the working tree; without this the replaced file would not be in the history at all
-        documents.snapshot(pid, author=user.display_name or user.username, message=f"Before upload replaced {rel}")
-    _apply(pid, [Change(path=rel, content=data, expected_sha=ANY)])
-    _touch(db, p)
+    with activity.track(db, pid, user, request, rel):
+        if len(data) > limit:
+            raise HTTPException(413, "file too large")
+        live = _live(pid)
+        if not overwrite and rel in live:
+            raise HTTPException(409, f"{rel} already exists")  # the web UI asks before replacing; API clients overwrite by default
+        if rel in live and live[rel] != data:
+            # writes only reach the working tree; without this the replaced file would not be in the history at all
+            documents.snapshot(pid, author=user.display_name or user.username, message=f"Before upload replaced {rel}")
+        _apply(pid, [Change(path=rel, content=data, expected_sha=ANY)])
+        _touch(db, p)
     return {"path": rel, "size": len(data), "is_text": store.is_text(rel, data)}
 
 
 @router.post("/files/rename")
-def rename(pid: str, body: RenameIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
+def rename(pid: str, body: RenameIn, request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)):
     p, _ = get_project_for(db, pid, user, "editor")
     src, dst = _norm(body.src), _norm(body.dst)
-    files = _live(pid)
-    if src not in files:
-        raise HTTPException(404, "file not found")
-    if dst in files:
-        raise HTTPException(409, "target exists")
-    data = files[src]
-    _apply(pid, [Change(path=dst, content=data, expected_sha=None),
-                 Change(path=src, content=None, expected_sha=store.sha256(data))])
-    if p.main_file == src:
-        p.main_file = dst
-    _touch(db, p)
+    with activity.track(db, pid, user, request, f"{src} -> {dst}"):
+        files = _live(pid)
+        if src not in files:
+            raise HTTPException(404, "file not found")
+        if dst in files:
+            raise HTTPException(409, "target exists")
+        data = files[src]
+        _apply(pid, [Change(path=dst, content=data, expected_sha=None),
+                     Change(path=src, content=None, expected_sha=store.sha256(data))])
+        if p.main_file == src:
+            p.main_file = dst
+        _touch(db, p)
     return {"path": dst}
 
 
 @router.delete("/files")
-def delete(pid: str, path: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
+def delete(pid: str, path: str, request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)):
     p, _ = get_project_for(db, pid, user, "editor")
     rel = _norm(path)
-    files = _live(pid)
-    if rel not in files:
-        raise HTTPException(404, "file not found")
-    _apply(pid, [Change(path=rel, content=None, expected_sha=store.sha256(files[rel]))])
-    _touch(db, p)
+    with activity.track(db, pid, user, request, f"deleted {rel}"):
+        files = _live(pid)
+        if rel not in files:
+            raise HTTPException(404, "file not found")
+        _apply(pid, [Change(path=rel, content=None, expected_sha=store.sha256(files[rel]))])
+        _touch(db, p)
     return {"ok": True}
+
+
+@router.get("/activity")
+def project_activity(pid: str, limit: int = 30, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Pushes made through the API (scripts, agents), newest first, with whether they worked."""
+    get_project_for(db, pid, user)
+    return activity.listing(db, pid, max(1, min(limit, 100)))
 
 
 @router.get("/outline")

@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api";
-import type { Version } from "../types";
+import type { PushActivity, Version } from "../types";
 import { fmtTime, relTime, shortRev, useAction, useAsync } from "../util";
 import { FileDiffHeader, HunkView } from "./DiffView";
 import { IconRetry } from "./Icons";
@@ -9,6 +9,7 @@ import { ConfirmButton, Empty, ErrorBox, Loading, Modal, Tag } from "./ui";
 
 export default function HistoryPanel({ pid, canEdit }: { pid: string; canEdit: boolean }) {
   const list = useAsync(() => api.versions(pid), [pid]);
+  const pushes = useAsync(() => api.activity(pid, 20), [pid]);
   const [label, setLabel] = useState("");
   const [diffFor, setDiffFor] = useState<Version | null>(null);
   const [labelledOnly, setLabelledOnly] = useState(false);
@@ -35,7 +36,7 @@ export default function HistoryPanel({ pid, canEdit }: { pid: string; canEdit: b
       <div className="side-head">
         <span className="side-title">History</span>
         <div className="spacer" />
-        <button className="icon-btn sm" aria-label="Refresh history" onClick={list.reload}>
+        <button className="icon-btn sm" aria-label="Refresh history" onClick={() => { void list.reload(); void pushes.reload(); }}>
           <IconRetry />
         </button>
       </div>
@@ -57,6 +58,7 @@ export default function HistoryPanel({ pid, canEdit }: { pid: string; canEdit: b
       </label>
       <ErrorBox error={list.error || save.error || restore.error} onRetry={list.error ? list.reload : undefined} />
       <div className="side-scroll">
+        {(pushes.data?.length ?? 0) > 0 && <PushList items={pushes.data ?? []} />}
         {list.loading && !list.data && <Loading />}
         {list.data && versions.length === 0 && <Empty>No versions yet.</Empty>}
         <ul className="versions">
@@ -115,5 +117,30 @@ function VersionDiffDialog({ pid, version, onClose }: { pid: string; version: Ve
         </section>
       ))}
     </Modal>
+  );
+}
+
+/** Pushes made through the API (scripts, agents): who, how many files, whether it worked. */
+function PushList({ items }: { items: PushActivity[] }) {
+  return (
+    <details className="push-list" open>
+      <summary className="small">Pushes from scripts and agents</summary>
+      <ul className="versions">
+        {items.map((a) => (
+          <li key={a.id} className="version">
+            <div className="version-main">
+              <Tag tone={a.ok ? "accent" : "warn"}>{a.ok ? "done" : "failed"}</Tag>
+              <span className="ellipsis" title={a.paths.join("\n")}>
+                {a.client} · {a.ok ? `${a.count} file${a.count === 1 ? "" : "s"}` : a.error || "failed"}
+              </span>
+            </div>
+            <div className="muted tiny" title={fmtTime(a.updated_at)}>
+              {relTime(a.updated_at)} · {a.paths.slice(0, 3).join(", ")}
+              {a.paths.length > 3 ? ` +${Math.max(a.count, a.paths.length) - 3}` : ""}
+            </div>
+          </li>
+        ))}
+      </ul>
+    </details>
   );
 }

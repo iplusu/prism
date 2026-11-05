@@ -13,7 +13,7 @@ import Sidebar, { type SideTab } from "../components/Sidebar";
 import { ErrorBox, Loading, Tabs } from "../components/ui";
 import WorkspaceHeader, { saveIndicatorFor, type PanelToggles } from "../components/WorkspaceHeader";
 import type { CompletionData } from "../editor/setup";
-import type { Build, PdfMark, ProjectStatus } from "../types";
+import type { Build, PdfMark, ProjectStatus, PushActivity } from "../types";
 import { useAsync, useInterval, useMediaQuery } from "../util";
 
 type NarrowTab = "files" | "editor" | "pdf" | "ai";
@@ -62,6 +62,41 @@ export default function WorkspacePage() {
   useInterval(() => {
     if (document.visibilityState === "visible") void refreshStatus();
   }, busy ? 1500 : 4000);
+
+  // Pushes made through the API (scripts, agents such as hermes): say so when one arrives, and whether it worked.
+  const [push, setPush] = useState<PushActivity | null>(null);
+  const pushSeen = useRef<number | null>(null);
+  const checkPush = useCallback(async () => {
+    try {
+      const list = await api.activity(pid, 10);
+      const newest = list.reduce((m, a) => Math.max(m, Date.parse(a.updated_at)), 0);
+      if (pushSeen.current === null) {
+        pushSeen.current = newest; // what was there before the page opened is not news
+        return;
+      }
+      const fresh = list.filter((a) => Date.parse(a.updated_at) > (pushSeen.current ?? 0));
+      pushSeen.current = Math.max(pushSeen.current ?? 0, newest);
+      if (fresh.length === 0) return;
+      setPush(fresh.find((a) => !a.ok) ?? fresh[0]);
+      void files.reload();
+      void refreshStatus();
+    } catch {
+      /* the notice is a convenience; the History panel shows the list */
+    }
+  }, [pid]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    pushSeen.current = null;
+    setPush(null);
+    void checkPush();
+  }, [checkPush]);
+  useInterval(() => {
+    if (document.visibilityState === "visible") void checkPush();
+  }, 5000);
+  useEffect(() => {
+    if (!push || !push.ok) return;
+    const t = window.setTimeout(() => setPush(null), 20000); // a failure stays until it is dismissed
+    return () => window.clearTimeout(t);
+  }, [push]);
 
   // Latest build with log + diagnostics (refetched when it changes state).
   const [build, setBuild] = useState<Build | undefined>(undefined);
@@ -573,6 +608,21 @@ export default function WorkspacePage() {
         onTogglePanel={togglePanel}
       />
       {statusError && <ErrorBox error={`Status update failed: ${statusError}`} onRetry={refreshStatus} />}
+      {push && (
+        <div className={`push-toast ${push.ok ? "ok" : "bad"}`} role={push.ok ? "status" : "alert"}>
+          <div>
+            <strong>{push.client}</strong>{" "}
+            {push.ok ? `pushed ${push.count} file${push.count === 1 ? "" : "s"}: done` : "push failed"}
+            <div className="tiny muted">
+              {push.ok ? push.paths.slice(0, 3).join(", ") + (push.count > 3 ? ` and ${push.count - 3} more` : "") : push.error || push.paths.join(", ")}
+            </div>
+            {push.ok && tabs.some((t) => push.paths.includes(t)) && (
+              <div className="tiny muted">An open file was changed. Close and reopen it to see the new text.</div>
+            )}
+          </div>
+          <button className="icon-btn sm" aria-label="Dismiss" onClick={() => setPush(null)}>×</button>
+        </div>
+      )}
       {collab.error && <ErrorBox error={`Collaboration unavailable (${collab.error}); editing with autosave instead.`} />}
       {narrow ? (
         <div className="narrow-layout">

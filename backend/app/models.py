@@ -228,3 +228,20 @@ class ProjectVersion(Base):
     label: Mapped[str] = mapped_column(String(200))
     created_by: Mapped[str | None] = mapped_column(String(32), nullable=True)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=now)
+
+
+class ProjectActivity(Base):
+    """File writes made through the API by something other than the browser (a script, an agent such as hermes): one row per
+    push, i.e. writes by the same client within a minute are merged. Lets the project page show that a push arrived and whether it worked."""
+
+    __tablename__ = "project_activity"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    client: Mapped[str] = mapped_column(String(120), default="")
+    ok: Mapped[bool] = mapped_column(Boolean, default=True)
+    count: Mapped[int] = mapped_column(Integer, default=1)  # files written in this push
+    paths: Mapped[list] = mapped_column(JSON, default=list)  # first few paths
+    error: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=now)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=now)
