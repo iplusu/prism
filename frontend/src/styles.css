@@ -2333,3 +2333,7 @@ td.row-actions {
 .ctx-line .ctx-desc { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ctx-line .check-row { flex: none; }
 .skill-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 8px; }
+.skill-cols { display: grid; grid-template-columns: 1fr 1.4fr; gap: 12px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; }
+.skill-col { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.skill-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+@media (max-width: 560px) { .skill-cols { grid-template-columns: 1fr; } }

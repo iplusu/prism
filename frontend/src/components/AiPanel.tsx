@@ -299,41 +299,50 @@ export default function AiPanel(p: Props) {
                     </>
                   )}
                 </div>
-                {dMode === "discuss" && (
-                  <>
-                    <label className="check-row">
-                      <input type="checkbox" checked={dApply} onChange={(e) => setDApply(e.target.checked)} /> Turn the agreed changes into a proposal (you still review and apply it)
-                    </label>
-                    <label className="check-row" title="The last selected tool must state its strongest evidence-based objection before it may accept a point, so agreement is not reached just to be agreeable.">
-                      <input type="checkbox" checked={dAdversary} onChange={(e) => setDAdversary(e.target.checked)} /> One tool plays devil's advocate (the last one selected)
-                    </label>
-                  </>
-                )}
                 <label className="field">
                   <span className="tiny muted">Role for the participants (optional; who they should act as, not the task)</span>
                   <input value={dPersona} maxLength={2000} placeholder="e.g. a JAMS referee" onChange={(e) => setDPersona(e.target.value)} />
                 </label>
-                <div className="tiny muted">Participants</div>
-                {dSys.loading && !dSys.data && <Loading text="Checking tools…" />}
-                {dAll.map((x) => {
-                  const ok = x.status === "available";
-                  return (
-                    <label key={x.name} className="check-row" title={ok ? "" : `${x.status}: ${x.detail}`}>
-                      <input type="checkbox" disabled={!ok} checked={ok && dTools[x.name] !== false} onChange={(e) => setDTools((v) => ({ ...v, [x.name]: e.target.checked }))} />{" "}
-                      {x.label} {!ok && <span className="muted tiny">({x.status})</span>}
+                <div className="skill-cols">
+                  <div className="skill-col">
+                    <div className="tiny muted">Participants</div>
+                    {dSys.loading && !dSys.data && <Loading text="Checking tools…" />}
+                    {dAll.map((x) => {
+                      const ok = x.status === "available";
+                      return (
+                        <label key={x.name} className="check-row" title={ok ? "" : `${x.status}: ${x.detail}`}>
+                          <input type="checkbox" disabled={!ok} checked={ok && dTools[x.name] !== false} onChange={(e) => setDTools((v) => ({ ...v, [x.name]: e.target.checked }))} />{" "}
+                          {x.label} {!ok && <span className="muted tiny">({x.status})</span>}
+                        </label>
+                      );
+                    })}
+                  </div>
+                  <div className="skill-col">
+                    <div className="tiny muted">Options</div>
+                    {dMode === "discuss" && (
+                      <>
+                        <label className="check-row" title="The agreed changes become an ordinary proposal; you still review and apply it.">
+                          <input type="checkbox" checked={dApply} onChange={(e) => setDApply(e.target.checked)} /> Make a proposal from the agreed changes
+                        </label>
+                        <label className="check-row" title="The last selected tool must state its strongest evidence-based objection before it may accept a point, so agreement is not reached just to be agreeable.">
+                          <input type="checkbox" checked={dAdversary} onChange={(e) => setDAdversary(e.target.checked)} /> Last tool plays devil's advocate
+                        </label>
+                      </>
+                    )}
+                    <label className="check-row">
+                      <input type="checkbox" checked={dKorean} onChange={(e) => setDKorean(e.target.checked)} /> Also write the report in Korean (한국어)
                     </label>
-                  );
-                })}
-                <label className="check-row">
-                  <input type="checkbox" checked={dKorean} onChange={(e) => setDKorean(e.target.checked)} /> Also write the report in Korean (한국어)
-                </label>
-                <div className="tiny muted">Read-only for the tools; takes many minutes and uses each tool's quota once per round.</div>
-                <div className="row-actions">
+                  </div>
+                </div>
+                <div className="skill-foot">
+                  <span className="tiny muted">Read-only for the tools; takes many minutes and uses each tool's quota once per round.</span>
+                  <div className="row-actions">
                   <button type="button" className="btn btn-primary" disabled={dChosen.length < (dMode === "discuss" ? 2 : 1) || startSkill.busy || (needsPrompt && !dAsk.trim())} onClick={() => void startSkill.run()}
                     title={dChosen.length < (dMode === "discuss" ? 2 : 1) ? "Select more available tools" : needsPrompt && !dAsk.trim() ? "Write a prompt first" : ""}>
                     {startSkill.busy ? "Starting…" : `Start with ${dChosen.length} tool${dChosen.length === 1 ? "" : "s"}`}
                   </button>
                   <button type="button" className="btn" onClick={() => setSkillOpen(false)}>Cancel</button>
+                  </div>
                 </div>
                 <ErrorBox error={startSkill.error} />
               </div>
