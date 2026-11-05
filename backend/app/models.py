@@ -235,6 +235,7 @@ class ProjectActivity(Base):
     push, i.e. writes by the same client within a minute are merged. Lets the project page show that a push arrived and whether it worked."""
 
     __tablename__ = "project_activity"
+    __table_args__ = (UniqueConstraint("project_id", "rev", name="uq_project_activity_rev"),)
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), index=True)
     user_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
@@ -243,5 +244,6 @@ class ProjectActivity(Base):
     count: Mapped[int] = mapped_column(Integer, default=1)  # files written in this push
     paths: Mapped[list] = mapped_column(JSON, default=list)  # first few paths
     error: Mapped[str] = mapped_column(Text, default="")
+    rev: Mapped[str | None] = mapped_column(String(64), nullable=True)  # git push: the commit the push moved main to (each push is imported once)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=now)
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=now)

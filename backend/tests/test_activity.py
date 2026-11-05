@@ -60,3 +60,40 @@ def test_other_users_cannot_read_a_projects_activity(alice, bob):
     pid = new_sample_project(alice)["id"]
     _up(alice, pid, "a.tex")
     assert bob.get(f"/api/projects/{pid}/activity").status_code in (403, 404)
+
+
+def _clone_and_push(alice, pid, tmp_path, files, name="Hermes Bot"):
+    """A real `git push` into the project's repository, the way hermes does it (receive.denyCurrentBranch=updateInstead)."""
+    import subprocess
+
+    from app.projects import store
+    repo = store.repo_dir(pid)
+    git = lambda cwd, *a: subprocess.run(["git", *a], cwd=cwd, check=True, capture_output=True, text=True,
+                                         env={"PATH": "/usr/bin:/bin", "HOME": str(tmp_path), "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_TERMINAL_PROMPT": "0"})
+    git(repo, "config", "receive.denyCurrentBranch", "updateInstead")
+    work = tmp_path / "clone"
+    git(tmp_path, "clone", "-q", str(repo), str(work))
+    for rel, text in files.items():
+        (work / rel).parent.mkdir(parents=True, exist_ok=True)
+        (work / rel).write_text(text)
+    git(work, "add", "-A")
+    git(work, "-c", f"user.name={name}", "-c", "user.email=h@example.invalid", "commit", "-q", "-m", "paper update")
+    git(work, "push", "-q", "origin", "HEAD:main")
+
+
+def test_a_git_push_into_the_project_repository_is_listed_once(alice, tmp_path):
+    pid = new_sample_project(alice)["id"]
+    assert _act(alice, pid) == []
+    _clone_and_push(alice, pid, tmp_path, {"main.tex": "% pushed\n", "sections/new.tex": "x\n"})
+    a = _act(alice, pid)
+    assert len(a) == 1 and a[0]["ok"] is True and a[0]["count"] == 2 and a[0]["client"].startswith("git push")
+    assert "Hermes Bot" in a[0]["client"] and set(a[0]["paths"]) == {"main.tex", "sections/new.tex"}
+    assert len(_act(alice, pid)) == 1  # reading again does not add it again
+    assert "pushed" in alice.get(f"/api/projects/{pid}/files/content", params={"path": "main.tex"}).text  # the working tree was updated
+
+
+def test_prisms_own_commits_are_not_pushes(alice):
+    pid = new_sample_project(alice)["id"]
+    assert alice.put(f"/api/projects/{pid}/files/content", json={"path": "main.tex", "text": "% edit\n"}, headers=BROWSER).status_code == 200
+    assert alice.post(f"/api/projects/{pid}/versions", json={"label": "v1"}).status_code in (200, 201)
+    assert _act(alice, pid) == []

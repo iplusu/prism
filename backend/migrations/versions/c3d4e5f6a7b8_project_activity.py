@@ -27,10 +27,12 @@ def upgrade() -> None:
         sa.Column('count', sa.Integer(), nullable=False, server_default='1'),
         sa.Column('paths', sa.JSON(), nullable=True),
         sa.Column('error', sa.Text(), nullable=False, server_default=''),
+        sa.Column('rev', sa.String(64), nullable=True),
         sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
         sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
     )
     op.create_index('ix_project_activity_project_id', 'project_activity', ['project_id'])
+    op.create_unique_constraint('uq_project_activity_rev', 'project_activity', ['project_id', 'rev'])
 
 
 def downgrade() -> None:

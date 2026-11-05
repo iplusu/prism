@@ -32,4 +32,11 @@ Newest first. After a push, look for `client` matching what you sent, `ok: true`
 
 ## Scope
 
-Only file writes through this API are tracked. A `git push` straight to GitHub bypasses Prism entirely and is invisible here.
+File writes through this API are tracked by the header above. A `git push` straight to GitHub bypasses Prism entirely and is invisible here.
+
+## `git push` into a project repository
+
+A push to the Prism project repository itself (`git push prism main`, the remote pointing at `<prism data dir>/projects/<project id>/repo`) needs `receive.denyCurrentBranch=updateInstead` in that repository's config (git otherwise refuses to update the checked-out branch; `updateInstead` also needs a clean working tree). Prism needs nothing from the pusher: it reads the repository's HEAD reflog for `push` entries and lists each push once, named `git push · <author of the pushed commit>`, with the number and paths of the changed files. No header and no extra call.
+
+- Only successful pushes leave a trace on the Prism side. A push git refuses (dirty working tree, wrong branch, no setting) is seen only in the pusher's git output; report that to the user from there.
+- After a push the project's working tree changes; open editors keep the old text until the file is reopened.
