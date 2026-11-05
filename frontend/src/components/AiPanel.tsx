@@ -530,6 +530,27 @@ function MessageItem({
         )}
         <CopyButton text={m.content} />
       </div>
+      {Array.isArray(meta.rounds) && (
+        <div className="review-reports">
+          {typeof meta.persona === "string" && meta.persona && <div className="muted tiny">Participants acted as: {meta.persona}</div>}
+          {typeof meta.lead === "string" && meta.lead && <div className="muted tiny">Report written by: {meta.lead === "claude" ? "Claude Code" : meta.lead === "codex" ? "Codex" : meta.lead === "antigravity" ? "Antigravity" : meta.lead}</div>}
+          {(meta.rounds as DiscussionStatement[][]).map((stm, i) => (
+            <details key={i} className="review-one">
+              <summary className="small">
+                Round {i + 1}
+                <span className="muted tiny"> · {stm.map((x) => `${x.label}${x.status !== "succeeded" ? ` (${x.status})` : x.agree === true ? (x.echo ? " ✓ (echo)" : " ✓") : x.agree === false ? " ✗" : ""}`).join(", ")}</span>
+              </summary>
+              {stm.map((x) => (
+                <div key={x.tool} className="small">
+                  <strong>{x.label}</strong>
+                  <div className="pre-wrap">{x.status === "succeeded" ? x.text : x.error || x.status}</div>
+                  {x.status === "succeeded" && <CopyButton text={x.text} label={`Copy ${x.label} statement`} />}
+                </div>
+              ))}
+            </details>
+          ))}
+        </div>
+      )}
       <div className="msg-body pre-wrap">{m.content}</div>
       {Array.isArray(meta.reviews) && (
         <div className="review-reports">
@@ -546,27 +567,6 @@ function MessageItem({
         </div>
       )}
       {meta.kind === "discussion" && canEdit && <SaveDiscussion pid={pid} m={m} onSaved={onApplied} />}
-      {Array.isArray(meta.rounds) && (
-        <div className="review-reports">
-          {typeof meta.persona === "string" && meta.persona && <div className="muted tiny">Participants acted as: {meta.persona}</div>}
-          {typeof meta.lead === "string" && meta.lead && <div className="muted tiny">Report written by: {meta.lead === "claude" ? "Claude Code" : meta.lead === "codex" ? "Codex" : meta.lead === "antigravity" ? "Antigravity" : meta.lead}</div>}
-          {(meta.rounds as DiscussionStatement[][]).map((stm, i) => (
-            <details key={i} className="review-one" open={i === (meta.rounds as unknown[]).length - 1}>
-              <summary className="small">
-                Round {i + 1}
-                <span className="muted tiny"> · {stm.map((x) => `${x.label}${x.status !== "succeeded" ? ` (${x.status})` : x.agree === true ? (x.echo ? " ✓ (echo)" : " ✓") : x.agree === false ? " ✗" : ""}`).join(", ")}</span>
-              </summary>
-              {stm.map((x) => (
-                <div key={x.tool} className="small">
-                  <strong>{x.label}</strong>
-                  <div className="pre-wrap">{x.status === "succeeded" ? x.text : x.error || x.status}</div>
-                  {x.status === "succeeded" && <CopyButton text={x.text} label={`Copy ${x.label} statement`} />}
-                </div>
-              ))}
-            </details>
-          ))}
-        </div>
-      )}
       {propId && <ProposalCard id={propId} proposal={proposal} canEdit={canEdit} onReview={onReview} onChanged={onChanged} onApplied={onApplied} reloadProposals={reloadProposals} />}
       <div className="msg-foot tiny" style={{ marginTop: 6 }}>
         <CopyButton text={m.content} />

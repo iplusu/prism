@@ -1,7 +1,9 @@
 // Browser check (Firefox, separate DEMO stack) of the Roundtable: the header button, no scrollbars in the AI panel at desktop and phone size,
 // the dialog, and the payload Start would send. The POST is intercepted, so no tool or LLM runs; tool status is faked (UI logic only).
-// usage: PRISM_URL=http://127.0.0.1:8010 node roundtableui.mjs <screenshot dir> <admin password>
+// PRISM_DB (the stack's SQLite file) lets the script insert one discussion message to check how it is laid out (rendering only; no tool or LLM runs).
+// usage: PRISM_URL=http://127.0.0.1:8010 PRISM_DB=<sqlite file> node roundtableui.mjs <screenshot dir> <admin password>
 import puppeteer from "puppeteer-core";
+import { execFileSync } from "node:child_process";
 
 const B = process.env.PRISM_URL;
 const [OUT, PW] = process.argv.slice(2);
@@ -114,6 +116,23 @@ await step("independent reviews mode sends a review task and hides the discussio
   const t = await p.evaluate(() => window.__tasks?.at(-1));
   if (t.context.review?.persona) throw new Error("persona sent");
   if (!t.context?.review || t.context?.discuss) throw new Error(JSON.stringify(t));
+});
+if (process.env.PRISM_DB) await step("a discussion message: rounds first and folded, the summary after them", async () => {
+  const meta = { kind: "discussion", focus: "custom", lead: "claude", notes: [], rounds: [1, 2, 3].map((r) => [
+    { tool: "codex", label: "Codex", status: "succeeded", text: `CODEX-R${r} statement`, error: "", agree: r === 1 ? null : r === 3, round: r },
+    { tool: "claude", label: "Claude Code", status: "succeeded", text: `CLAUDE-R${r} statement`, error: "", agree: r === 1 ? null : true, round: r }]) };
+  execFileSync("python3", ["-c", "import sqlite3,sys,json; c=sqlite3.connect(sys.argv[1]); c.execute(\"insert into messages (project_id, user_id, role, content, task_id, meta, created_at) values (?, (select id from users where username='admin'), 'assistant', ?, NULL, ?, '2026-11-05 06:00:00.000000')\", (sys.argv[2], '## SUMMARY\\nSUMMARY-TEXT of the report', sys.argv[3])); c.commit()", process.env.PRISM_DB, PID, JSON.stringify(meta)]);
+  await p.setViewport({ width: 1500, height: 950 });
+  await p.goto(`${B}/p/${PID}`, { waitUntil: "domcontentloaded" });
+  await p.waitForSelector(".review-one", { timeout: 20000 });
+  const r = await p.evaluate(() => {
+    const ds = [...document.querySelectorAll(".review-one")];
+    const body = [...document.querySelectorAll(".msg-body")].find((b) => b.textContent.includes("SUMMARY-TEXT"));
+    return { n: ds.length, open: ds.filter((d) => d.open).length, before: ds.every((d) => d.compareDocumentPosition(body) & Node.DOCUMENT_POSITION_FOLLOWING), summaries: ds.map((d) => d.querySelector("summary").textContent.trim().replace(/\s+/g, " ")) };
+  });
+  await p.screenshot({ path: `${OUT}/rt-message.png` });
+  if (r.n !== 3 || r.open !== 0 || !r.before) throw new Error(JSON.stringify(r));
+  return r.summaries.join(" || ");
 });
 await step("phone 412x915: AI tab has no horizontal overflow, Roundtable reachable and the dialog fits", async () => {
   await p.keyboard.press("Escape");
