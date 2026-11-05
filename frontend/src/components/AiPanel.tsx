@@ -7,7 +7,7 @@ import type { SelectionInfo } from "./CodeEditor";
 import { IconReview, IconRetry, IconStop, IconUpload } from "./Icons";
 import { EventList, executorFromEvents, isActive, LiveDot, useTaskStream } from "./TaskProgress";
 import PdfViewer from "./PdfViewer";
-import { Badge, CopyButton, Empty, ErrorBox, Loading, Modal, Tag } from "./ui";
+import { Badge, ConfirmButton, CopyButton, Empty, ErrorBox, Loading, Modal, Tag } from "./ui";
 
 type Scope = TaskContextSpec["scope"];
 
@@ -211,6 +211,17 @@ export default function AiPanel(p: Props) {
       <div className="panel-head">
         <span className="side-title">AI assistant</span>
         <div className="spacer" />
+        {p.canEdit && (messages.data?.length ?? 0) > 0 && (
+          <ConfirmButton
+            label="New chat"
+            question="Start a new conversation? The AI forgets this chat; your files, tasks and proposals are kept."
+            confirmLabel="New chat"
+            onConfirm={async () => {
+              await api.resetChat(p.pid);
+              await messages.reload();
+            }}
+          />
+        )}
         <button className="icon-btn sm" aria-label="Refresh conversation" onClick={refreshAll}>
           <IconRetry />
         </button>

@@ -222,6 +222,7 @@ export const api = {
   taskStreamUrl: (tid: string, after = 0) => `/api/tasks/${enc(tid)}/stream${after ? `?after=${after}` : ""}`,
   cancelTask: (tid: string) => request<Task>(`/api/tasks/${enc(tid)}/cancel`, { method: "POST" }),
   retryTask: (tid: string) => request<Task>(`/api/tasks/${enc(tid)}/retry`, { method: "POST" }),
+  resetChat: (pid: string) => request<{ ok: boolean }>(`${P(pid)}/messages/reset`, { method: "POST" }),
   messages: (pid: string) => request<ChatMessage[]>(`${P(pid)}/messages`),
 
   // --- proposals --------------------------------------------------------

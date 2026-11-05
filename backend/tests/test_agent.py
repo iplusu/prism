@@ -599,3 +599,25 @@ def test_texcount_handles_a_single_file_project():
     if c is None:
         pytest.skip("texcount is not installed")
     assert c["total"] == 2  # no "File(s) total" line is printed when nothing is \\input
+
+
+def test_new_conversation_hides_and_forgets_the_earlier_chat(alice, bob, llm):
+    """"New chat" is a marker, not a deletion: the chat list starts after it and the planner no longer sees the
+    earlier conversation, while the tasks stay; a viewer cannot reset, and one user's reset never touches another's."""
+    pid = new_sample_project(alice)["id"]
+    alice.post(f"/api/projects/{pid}/members", json={"username": "bob", "role": "viewer"})
+    llm.script = [tool("answer", message="OLD-ANSWER-XYZ")]
+    _task(alice, pid, "OLD-REQUEST-XYZ")
+    drain()
+    assert len(alice.get(f"/api/projects/{pid}/messages").json()) == 2
+    assert bob.post(f"/api/projects/{pid}/messages/reset").status_code == 403
+    assert alice.post(f"/api/projects/{pid}/messages/reset").status_code == 200
+    assert alice.get(f"/api/projects/{pid}/messages").json() == []
+    assert len(alice.get(f"/api/projects/{pid}/tasks").json()) == 1  # nothing deleted
+    llm.script = [tool("answer", message="NEW-ANSWER")]
+    _task(alice, pid, "NEW-REQUEST")
+    drain()
+    text = _user_text(llm)
+    assert "OLD-REQUEST-XYZ" not in text and "OLD-ANSWER-XYZ" not in text and "Earlier conversation" not in text
+    msgs = alice.get(f"/api/projects/{pid}/messages").json()
+    assert [m["role"] for m in msgs] == ["user", "assistant"] and "reset" not in str([m["meta"] for m in msgs])

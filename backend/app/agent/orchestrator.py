@@ -81,13 +81,21 @@ class Runner:
                             content=content, task_id=self.task.id, meta=meta))
         self.db.commit()
 
+    def _last_reset(self) -> int:
+        """The user pressed "New conversation": nothing before this message may be used as chat context."""
+        rows = (self.db.query(Message.id, Message.meta)
+                .filter(Message.project_id == self.project.id, Message.user_id == self.task.user_id, Message.role == "system")
+                .order_by(Message.id.desc()).limit(50).all())
+        return next((i for i, meta in rows if (meta or {}).get("kind") == "reset"), 0)
+
     def _history(self) -> str:
         """The user's recent chat in this project (their requests and the answers), so that a follow-up such as
         'check whether the points you raised were fixed' has something to refer to. Standalone analysis presets
         and the current task's own message are left out; each entry and the total are capped."""
+        reset = self._last_reset()
         rows = (self.db.query(Message)
                 .filter(Message.project_id == self.project.id, Message.user_id == self.task.user_id,
-                        Message.role.in_(("user", "assistant")))
+                        Message.role.in_(("user", "assistant")), Message.id > reset)
                 .order_by(Message.id.desc()).limit(40).all())
         keep, used = [], 0
         for m in rows:  # newest first

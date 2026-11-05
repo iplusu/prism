@@ -120,10 +120,29 @@ def list_tasks(pid: str, limit: int = 50, user: User = Depends(current_user), db
 @router.get("/projects/{pid}/messages")
 def messages(pid: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
     get_project_for(db, pid, user)
-    rows = db.execute(select(Message).where(Message.project_id == pid, Message.user_id == user.id)
+    # a reset marker (see reset_chat) starts a new conversation: only what came after it is shown
+    since = latest_reset(db, pid, user.id)
+    rows = db.execute(select(Message).where(Message.project_id == pid, Message.user_id == user.id, Message.id > since)
                       .order_by(Message.id.desc()).limit(200)).scalars().all()
     return [{"id": m.id, "role": m.role, "content": m.content, "task_id": m.task_id, "meta": m.meta,
              "created_at": m.created_at.isoformat()} for m in reversed(rows)]
+
+
+def latest_reset(db: Session, pid: str, uid: str) -> int:
+    """Id of the user's newest "new conversation" marker in this project (0 if there is none)."""
+    rows = db.execute(select(Message.id, Message.meta).where(Message.project_id == pid, Message.user_id == uid, Message.role == "system")
+                      .order_by(Message.id.desc()).limit(50)).all()
+    return next((i for i, meta in rows if (meta or {}).get("kind") == "reset"), 0)
+
+
+@router.post("/projects/{pid}/messages/reset")
+def reset_chat(pid: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Start a new conversation. Nothing is deleted: tasks, proposals and earlier messages stay, but the chat shows
+    only what comes after this point and the AI no longer sees the earlier conversation as context."""
+    get_project_for(db, pid, user, "editor")
+    db.add(Message(project_id=pid, user_id=user.id, role="system", content="New conversation", meta={"kind": "reset"}))
+    db.commit()
+    return {"ok": True}
 
 
 def _task_for(db: Session, tid: str, user: User, min_role: str = "viewer") -> Task:

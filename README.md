@@ -228,7 +228,7 @@ Remaining work / not verified:
 - **Docker Compose**: no Docker on this host, so image builds and startup were not verified.
 - Backup script: the `pg_dump` backup path was run on the production PostgreSQL instance; the `pg_restore` path of `restore.sh` has not been run. The SQLite backup/restore path was verified.
 - The memory cap for tool processes relies on the container (`mem_limit`) (Node-based CLIs are incompatible with `RLIMIT_AS`).
-- AI chat history is per user (task history is shared within the project).
+- AI chat history is per user (task history is shared within the project). "New chat" (AI panel header) starts a new conversation: the chat is emptied and the AI no longer sees the earlier one as context, but nothing is deleted (tasks, proposals and old messages stay) and there is no screen to bring the old chat back.
 
 ## Documentation
 
