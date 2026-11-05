@@ -185,6 +185,7 @@ export default function AiPanel(p: Props) {
       (dFocus === "review" ? "Tool discussion: review the manuscript"
         : dFocus === "strategy" ? "Tool discussion: plan the paper's strategy"
         : dFocus === "experiments" ? "Tool discussion: design the additional experiments" : "Tool discussion: decide the revision direction")
+        + (dPersona.trim() ? `\nRole for the participants: ${dPersona.trim()}` : "")
         + (dAsk.trim() ? `\n\n${dAsk.trim()}` : ""),
       "llm",
       { scope: "project", discuss: { tools: dChosen, focus: dFocus, rounds: dRounds, persona: dPersona.trim(), apply: dApply, korean: dKorean } },
@@ -530,6 +531,7 @@ function MessageItem({
       {meta.kind === "discussion" && canEdit && <SaveDiscussion pid={pid} m={m} onSaved={onApplied} />}
       {Array.isArray(meta.rounds) && (
         <div className="review-reports">
+          {typeof meta.persona === "string" && meta.persona && <div className="muted tiny">Participants acted as: {meta.persona}</div>}
           {(meta.rounds as DiscussionStatement[][]).map((stm, i) => (
             <details key={i} className="review-one" open={i === (meta.rounds as unknown[]).length - 1}>
               <summary className="small">

@@ -285,3 +285,14 @@ def test_reviewer_report_can_also_be_written_in_korean():
     off = reviewers.synthesis_messages("검토해 줘", {}, rv, "main.tex", False)[-1]["content"]
     default_en = reviewers.synthesis_messages("Reviewer report", {}, rv, "main.tex")[-1]["content"]
     assert "한국어" in on and "한국어" not in off and "한국어" not in default_en
+
+
+def test_the_role_is_kept_with_the_result_so_it_can_be_shown(alice, llm):
+    _tools()
+    pid = new_sample_project(alice)["id"]
+    llm.script = [{"content": REPORT}]
+    tid = _discuss(alice, pid, apply=False, persona="an ACL area chair")
+    drain()
+    _, msgs = _msgs(alice, tid)
+    d = next(m for m in msgs if m["meta"].get("kind") == "discussion")
+    assert d["meta"]["persona"] == "an ACL area chair"

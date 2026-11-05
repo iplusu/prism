@@ -414,7 +414,7 @@ class Runner:
         except LLMError as e:
             raise RuntimeError(f"the moderator could not write the report: {e.message}") from e
         body, agreed = discussion.split_agreed(report)
-        meta = {"rounds": [[{k: v for k, v in r.items()} for r in stm] for stm in rounds], "notes": notes, "skipped": skipped,
+        meta = {"rounds": [[{k: v for k, v in r.items()} for r in stm] for stm in rounds], "persona": shared, "notes": notes, "skipped": skipped,
                 "agreed": agreed, "focus": focus}
         self.say(body + ("\n\n" + "\n".join(notes) if notes else ""), kind="discussion", **meta)
         if not apply:
