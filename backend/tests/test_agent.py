@@ -385,6 +385,7 @@ def test_hidden_reasoning_is_off_first_only_for_plain_work_without_external_tool
     drain()
     assert _thinking_off(llm.requests[0])
 
+    set_env(PLAN_FOR_EXPLICIT_TOOL=True)  # an explicitly chosen tool is only planned by the LLM when this is on (default: it is not)
     for mode, ctx in (("auto", {}), ("claude", {}), ("llm", {"scope": "project", "answer_only": True})):
         llm.requests.clear()
         llm.script = [tool("answer", message="ok")] if mode != "claude" else [tool("delegate", message="", delegation={"goal": "x", "executor": "claude"})]
@@ -621,3 +622,40 @@ def test_new_conversation_hides_and_forgets_the_earlier_chat(alice, bob, llm):
     assert "OLD-REQUEST-XYZ" not in text and "OLD-ANSWER-XYZ" not in text and "Earlier conversation" not in text
     msgs = alice.get(f"/api/projects/{pid}/messages").json()
     assert [m["role"] for m in msgs] == ["user", "assistant"] and "reset" not in str([m["meta"] for m in msgs])
+
+
+def test_an_explicitly_chosen_tool_is_not_planned_by_the_llm(alice, llm):
+    register_override("codex", FakeAdapter("codex", "edit-scope"))
+    pid = new_sample_project(alice)["id"]
+    first = _task(alice, pid, "Explain the clipping in the method section", mode="llm", scope="project", answer_only=True)
+    llm.script = [tool("answer", message="It keeps the step in a safe range.")]
+    drain()
+    llm.requests.clear()
+    tid = _task(alice, pid, "clarify the clipping you just explained", mode="codex", scope="file", path="sections/method.tex")
+    drain()
+    t = _get(alice, tid)
+    # no planning request reached the model server (the only call left is the plain-language summary of the finished edit)
+    assert all(r["messages"][0]["content"].startswith("You explain the result") for r in llm.requests), [r["messages"][0]["content"][:60] for r in llm.requests]
+    assert t["status"] == "needs_review", t["error"]
+    assert t["executor_used"] == "codex"
+    assert t["contract"]["write_scope"] == ["sections/method.tex"]
+    assert t["contract"]["goal"].startswith("clarify the clipping you just explained")
+    assert "Earlier in this conversation" in t["contract"]["goal"] and "safe range" in t["contract"]["goal"]  # the follow-up keeps its context
+    assert any("no orchestrator planning" in e["message"] for e in t["events"]), [e["message"] for e in t["events"]]
+    assert first  # (the analysis above only supplies the chat history)
+
+
+def test_the_planner_can_be_switched_back_on_and_a_very_long_request_is_still_planned(alice, llm):
+    register_override("codex", FakeAdapter("codex", "edit-scope"))
+    pid = new_sample_project(alice)["id"]
+    llm.script = [tool("delegate", message="", delegation={"goal": "x", "executor": "codex", "write_scope": ["sections/method.tex"]})]
+    long_request = "clarify the clipping. " + "Details. " * 500  # more than fits in a 4000-character goal
+    tid = _task(alice, pid, long_request, mode="codex")
+    drain()
+    assert llm.requests and _get(alice, tid)["plan_source"].startswith("llm")
+    llm.requests.clear()
+    set_env(PLAN_FOR_EXPLICIT_TOOL=True)
+    llm.script = [tool("delegate", message="", delegation={"goal": "x", "executor": "codex", "write_scope": ["sections/method.tex"]})]
+    _task(alice, pid, "clarify clipping", mode="codex")
+    drain()
+    assert llm.requests

@@ -193,6 +193,11 @@ class Runner:
         if not llm_ok and not explicit_tool and not s.demo_mode:
             raise RuntimeError("the orchestrator LLM is not configured (set LLM_BASE_URL and LLM_MODEL), "
                                "so Auto/LLM modes cannot run. You can still pick a specific tool.")
+        if explicit_tool and not s.plan_for_explicit_tool and len(t.request) <= 3500:  # a longer request cannot be a goal (4000 chars): the LLM condenses it
+            # the user picked the tool: it gets the request as the goal in a server-built contract, with no planning by the orchestrator LLM
+            # (which can take many minutes on a slow or failing model server); the write scope, checks and verification are the same
+            self.emit("plan", f"{reviewers.LABELS.get(mode, mode)} was chosen: no orchestrator planning, the request goes to it as written")
+            return self._delegate(self._server_delegation(history=True), plan_source="server", message="")
         if llm_ok:
             provider = get_provider()
             self.emit("llm", f"planning with {active_model()}")
@@ -464,13 +469,19 @@ class Runner:
     def _finish(self, status: str) -> None:
         self.set_status(status)
 
-    def _server_delegation(self) -> DelegationRequest:
+    def _server_delegation(self, history: bool = False) -> DelegationRequest:
         spec = self.task.context_spec or {}
         if spec.get("path") and spec.get("scope") in ("file", "selection"):
             scope = [spec["path"]]
         else:
             scope = ["**/*.tex", "**/*.bib"]
-        return DelegationRequest(goal=self.task.request, task_kind="other", write_scope=scope,
+        goal = self.task.request
+        if history:  # without the planner nothing carries the earlier chat: add what fits, so that "do that" still has something to refer to
+            room = 3900 - len(goal) - 60
+            earlier = self._history() if room > 300 else ""
+            if earlier:
+                goal += "\n\nEarlier in this conversation (context only, the request above is the task):\n" + earlier[-room:]
+        return DelegationRequest(goal=goal, task_kind="other", write_scope=scope,
                                  constraints=["Only change what the request asks for."],
                                  acceptance_checks=list(DEFAULT_CHECKS))
 

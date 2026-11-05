@@ -129,6 +129,8 @@ class Settings(BaseSettings):
     # Lets the orchestrator ask the server to search the web / fetch public pages (action "search"). Off by default:
     # queries leave the server. WEB_SEARCH_URL is an optional SearXNG /search endpoint; empty = DuckDuckGo HTML.
     web_access_enabled: bool = Field(default=False, alias="WEB_ACCESS_ENABLED")
+    # true: a request for a tool the user picked is planned by the orchestrator LLM first (narrower scope and checks, but it waits for the model server)
+    plan_for_explicit_tool: bool = Field(default=False, alias="PLAN_FOR_EXPLICIT_TOOL")
     web_search_url: str = Field(default="", alias="WEB_SEARCH_URL")
     web_max_rounds: int = Field(default=3, ge=1, le=4, alias="WEB_MAX_ROUNDS")
     web_timeout_seconds: int = Field(default=20, ge=3, le=120, alias="WEB_TIMEOUT_SECONDS")
