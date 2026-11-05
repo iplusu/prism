@@ -76,10 +76,11 @@ await step("the dialog opens with prompt, how, goal, rounds, role, three tools, 
   await p.screenshot({ path: `${OUT}/rt-dialog.png` });
   return (await p.evaluate(() => [...document.querySelectorAll(".skill-form .check-row")].map((l) => l.textContent.trim().replace(/\s+/g, " ")))).join(" | ");
 });
-await step("Start sends a discuss task: custom goal, the prompt, 3 rounds, role, devil's advocate", async () => {
+await step("Start sends a discuss task: custom goal, the prompt, 5 rounds, role, devil's advocate", async () => {
   await p.type(".skill-form textarea", "Is the ablation enough for claim 2?");
   const sels = await p.$$(".skill-form select"); // how, goal, rounds
-  await sels[2].select("3");
+  await sels[2].select("5");
+  await sels[3].select("claude"); // Lead
   await p.type('.skill-form input[maxlength="2000"]', "a JAMS referee");
   await p.evaluate(() => [...document.querySelectorAll(".skill-form .check-row")].find((l) => /devil/.test(l.textContent)).querySelector("input").click());
   await btn("^Start with 3 tools$");
@@ -87,7 +88,7 @@ await step("Start sends a discuss task: custom goal, the prompt, 3 rounds, role,
   const t = await p.evaluate(() => window.__tasks?.at(-1));
   if (!t) throw new Error("no POST");
   const d = t.context?.discuss;
-  if (!d || d.focus !== "custom" || d.rounds !== 3 || d.persona !== "a JAMS referee" || d.adversary !== true || d.tools.length !== 3 || d.apply !== false) throw new Error(JSON.stringify(t));
+  if (!d || d.focus !== "custom" || d.rounds !== 5 || d.persona !== "a JAMS referee" || d.adversary !== true || d.lead !== "claude" || d.tools.length !== 3 || d.apply !== false) throw new Error(JSON.stringify(t));
   if (!/Is the ablation enough for claim 2\?/.test(t.request) || !/^Roundtable:/.test(t.request)) throw new Error(t.request);
   return JSON.stringify(d);
 });

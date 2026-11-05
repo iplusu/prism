@@ -156,9 +156,10 @@ export default function AiPanel(p: Props) {
   const [skillOpen, setSkillOpen] = useState(false);
   const [dMode, setDMode] = useState<"discuss" | "reviews">("discuss");
   const [dFocus, setDFocus] = useState<Focus>("custom");
-  const [dRounds, setDRounds] = useState(2);
+  const [dRounds, setDRounds] = useState(3);
   const [dApply, setDApply] = useState(false);
   const [dAdversary, setDAdversary] = useState(false);
+  const [dLead, setDLead] = useState("");
   const [dPersona, setDPersona] = useState("");
   const [dAsk, setDAsk] = useState("");
   const [dTools, setDTools] = useState<Record<string, boolean>>({});
@@ -180,7 +181,7 @@ export default function AiPanel(p: Props) {
           })
         : await api.createTask(p.pid, `Roundtable: ${FOCUS_TITLE[dFocus]}${role}${ask}`, "llm", {
             scope: "project",
-            discuss: { tools: dChosen, focus: dFocus, rounds: dRounds, persona: dPersona.trim(), apply: dApply, korean: dKorean, adversary: dAdversary },
+            discuss: { tools: dChosen, focus: dFocus, rounds: dRounds, persona: dPersona.trim(), apply: dApply, korean: dKorean, adversary: dAdversary, ...(dLead ? { lead: dLead } : {}) },
           });
     tasks.setData([t, ...(tasks.data ?? [])]);
     setSkillOpen(false);
@@ -265,16 +266,15 @@ export default function AiPanel(p: Props) {
                     </button>
                   ))}
                 </div>
-                <div className="skill-grid">
-                <label className="field">
-                  <span className="tiny muted">How</span>
-                  <select value={dMode} onChange={(e) => setDMode(e.target.value as "discuss" | "reviews")}>
-                    <option value="discuss">Discussion (tools answer each other, @mentions)</option>
-                    <option value="reviews">Independent reviews (merged into one report)</option>
-                  </select>
-                </label>
+                <div className="skill-row">
+                  <label className="field">
+                    <span className="tiny muted">How</span>
+                    <select value={dMode} onChange={(e) => setDMode(e.target.value as "discuss" | "reviews")}>
+                      <option value="discuss">Discussion (tools answer each other, @mentions)</option>
+                      <option value="reviews">Independent reviews (merged into one report)</option>
+                    </select>
+                  </label>
                   {dMode === "discuss" && (
-                    <>
                     <label className="field">
                       <span className="tiny muted">Goal</span>
                       <select value={dFocus} onChange={(e) => { const f = e.target.value as Focus; setDFocus(f); setDApply(f === "review" || f === "direction"); }}>
@@ -285,24 +285,35 @@ export default function AiPanel(p: Props) {
                         <option value="direction">Revision direction (what to change, in what order)</option>
                       </select>
                     </label>
-                    <label className="field">
-                      <span className="tiny muted">Rounds</span>
-                      <select value={dRounds} onChange={(e) => setDRounds(Number(e.target.value))}>
-                        {[1, 2, 3].map((n) => (
-                          <option key={n} value={n}>
-                            {n}
-                            {n === 1 ? " (independent statements only)" : ""}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    </>
                   )}
                 </div>
-                <label className="field">
-                  <span className="tiny muted">Role for the participants (optional; who they should act as, not the task)</span>
-                  <input value={dPersona} maxLength={2000} placeholder="e.g. a JAMS referee" onChange={(e) => setDPersona(e.target.value)} />
-                </label>
+                <div className={`skill-row ${dMode === "discuss" ? "skill-row3" : ""}`}>
+                  {dMode === "discuss" && (
+                    <>
+                      <label className="field">
+                        <span className="tiny muted">Rounds</span>
+                        <select value={dRounds} onChange={(e) => setDRounds(Number(e.target.value))}>
+                          {[3, 4, 5].map((n) => (
+                            <option key={n} value={n}>{n}</option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="field" title="Who writes the final report (summary, conclusion, agreed changes). The orchestrator LLM is faster; a tool is slower and uses its quota once more.">
+                        <span className="tiny muted">Lead (writes the report)</span>
+                        <select value={dLead} onChange={(e) => setDLead(e.target.value)}>
+                          <option value="">Orchestrator LLM</option>
+                          {dAll.filter((x) => x.status === "available").map((x) => (
+                            <option key={x.name} value={x.name}>{x.label}</option>
+                          ))}
+                        </select>
+                      </label>
+                    </>
+                  )}
+                  <label className="field">
+                    <span className="tiny muted">Role for the participants (optional; who they act as, not the task)</span>
+                    <input value={dPersona} maxLength={2000} placeholder="e.g. a JAMS referee" onChange={(e) => setDPersona(e.target.value)} />
+                  </label>
+                </div>
                 <div className="skill-cols">
                   <div className="skill-col">
                     <div className="tiny muted">Participants</div>
@@ -530,6 +541,7 @@ function MessageItem({
       {Array.isArray(meta.rounds) && (
         <div className="review-reports">
           {typeof meta.persona === "string" && meta.persona && <div className="muted tiny">Participants acted as: {meta.persona}</div>}
+          {typeof meta.lead === "string" && meta.lead && <div className="muted tiny">Report written by: {meta.lead === "claude" ? "Claude Code" : meta.lead === "codex" ? "Codex" : meta.lead === "antigravity" ? "Antigravity" : meta.lead}</div>}
           {(meta.rounds as DiscussionStatement[][]).map((stm, i) => (
             <details key={i} className="review-one" open={i === (meta.rounds as unknown[]).length - 1}>
               <summary className="small">

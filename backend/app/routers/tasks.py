@@ -44,9 +44,10 @@ class DiscussIn(BaseModel):
     """Tool discussion: the tools read each other's statements over several rounds; the agreed changes can become a proposal."""
     tools: list[Literal["codex", "claude", "antigravity"]] | None = None  # default: every tool that is allowed and available (min. 2)
     focus: Literal["review", "direction", "strategy", "experiments", "custom"] = "review"
-    rounds: int = Field(default=2, ge=1, le=3)
+    rounds: int = Field(default=3, ge=1, le=5)  # the Roundtable dialog offers 3-5
     persona: str = Field(default="", max_length=2000)
     korean: bool | None = None  # also write the report in Korean; default: only when the request itself is Korean
+    lead: Literal["codex", "claude", "antigravity"] | None = None  # this tool writes the report; default: the orchestrator LLM
     adversary: bool = False  # the last selected tool plays devil's advocate: it must object before it may accept
     apply: bool | None = None  # turn the agreed changes into a proposal (still verified and applied only by the user); default: yes, except for a strategy discussion
 

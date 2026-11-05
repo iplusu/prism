@@ -195,7 +195,7 @@ export interface TaskContextSpec {
   /** Reviewer report: independent read-only reviews by several tools, merged by the orchestrator. */
   review?: { tools?: string[]; persona?: string; personas?: Record<string, string>; korean?: boolean };
   /** Tool discussion: the tools answer each other over rounds; the agreed changes can become a proposal. */
-  discuss?: { tools?: string[]; focus?: "custom" | "review" | "direction" | "strategy" | "experiments"; rounds?: number; persona?: string; apply?: boolean; korean?: boolean; adversary?: boolean };
+  discuss?: { tools?: string[]; focus?: "custom" | "review" | "direction" | "strategy" | "experiments"; rounds?: number; persona?: string; apply?: boolean; korean?: boolean; adversary?: boolean; lead?: string };
 }
 
 export interface DiscussionStatement {

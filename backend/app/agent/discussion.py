@@ -229,6 +229,19 @@ def moderator_messages(focus: str, request: str, rounds: list[list[dict]], main_
     return [{"role": "system", "content": MODERATOR_SYSTEM}, {"role": "user", "content": user}]
 
 
+def lead_prompt(messages: list[dict]) -> str:
+    """The moderator request as ONE prompt for a tool that leads the discussion (the tool writes the report instead of the orchestrator LLM)."""
+    system = next((m["content"] for m in messages if m["role"] == "system"), "")
+    user = next((m["content"] for m in messages if m["role"] == "user"), "")
+    return "\n".join([
+        system,
+        "You are the lead of this discussion: you write the final report. The current directory is a private copy of the manuscript; "
+        "READ files to check a claim, but do NOT modify, create or delete any file, and do not run LaTeX or the network.",
+        "Your final message must be the complete report with the sections below, and nothing else.",
+        "", user,
+    ])
+
+
 def split_agreed(report: str) -> tuple[str, str]:
     """(report without the agreed-changes section, the agreed-changes text; '' if none)."""
     i = report.find(AGREED_HEADING)

@@ -367,7 +367,7 @@ class Runner:
         if len(use) < 2:
             raise RuntimeError("a discussion needs at least two available tools: " + "; ".join(f"{x['tool']} ({x['reason']})" for x in skipped) + " (see Settings → Tools)")
         focus = spec.get("focus") if spec.get("focus") in discussion.FOCUS else "review"
-        total = max(1, min(int(spec.get("rounds") or 2), 3))
+        total = max(1, min(int(spec.get("rounds") or 3), 5))
         apply = bool(spec["apply"]) if spec.get("apply") is not None else focus not in ("strategy", "experiments", "custom")
         korean = bool(spec["korean"]) if spec.get("korean") is not None else discussion._has_hangul(t.request)
         shared = (spec.get("persona") or "").strip()
@@ -377,7 +377,8 @@ class Runner:
         self.set_status("running")
         self.emit("discussion", f"{len(use)} participants ({', '.join(names.values())}), up to {total} round(s), goal: {focus}",
                   tools=use, rounds=total, focus=focus)
-        reserve = 900 if apply else 120  # time kept for the moderator and the edit that follows
+        lead = spec.get("lead") if spec.get("lead") in ("codex", "claude", "antigravity") else None  # a tool that writes the report; default: the orchestrator LLM
+        reserve = (900 if apply else 120) + (min(s.review_tool_timeout_seconds, 600) if lead else 0)  # time kept for the moderator and the edit that follows
         rounds: list[list[dict]] = []
         active = list(use)
         notes: list[str] = []
@@ -419,15 +420,32 @@ class Runner:
                 notes.append(f"everyone agreed in round {rnd}; the discussion ended early")
                 break
         delivered = [[r for r in stm if r["status"] == "succeeded"] for stm in rounds]
-        self.emit("llm", f"moderating with {active_model()}")
-        try:
-            report = reviewers.synthesize(get_provider(), discussion.moderator_messages(focus, t.request, delivered, self.project.main_file, apply, korean, adversary),
-                                         min_tokens=(14_000 if focus == "experiments" else 8_000) + (6_000 if korean else 0))
-        except LLMError as e:
-            raise RuntimeError(f"the moderator could not write the report: {e.message}") from e
+        mod_msgs = discussion.moderator_messages(focus, t.request, delivered, self.project.main_file, apply, korean, adversary)
+        report, led_by = "", None
+        if lead:
+            lname = reviewers.LABELS.get(lead, lead)
+            ok_, why = available(lead)
+            tmo = min(s.review_tool_timeout_seconds, int(self.deadline - time.monotonic()) - (600 if apply else 60))
+            if not ok_:
+                notes.append(f"{lname} could not lead ({why}); the orchestrator LLM wrote the report")
+            elif tmo < 60:
+                notes.append(f"{lname} could not lead (the task time limit is nearly used up); the orchestrator LLM wrote the report")
+            else:
+                self.emit("discussion_lead", f"{lname} leads: writing the report")
+                res = self._tool_round([lead], {lead: discussion.lead_prompt(mod_msgs)}, "lead", tmo).get(lead) or {}
+                if res.get("status") == "succeeded" and (res.get("text") or "").strip():
+                    report, led_by = res["text"].strip(), lead
+                else:
+                    notes.append(f"{lname} could not write the report ({res.get('status', 'failed')}: {str(res.get('error', ''))[:120]}); the orchestrator LLM wrote it")
+        if not report:
+            self.emit("llm", f"moderating with {active_model()}")
+            try:
+                report = reviewers.synthesize(get_provider(), mod_msgs, min_tokens=(14_000 if focus == "experiments" else 8_000) + (6_000 if korean else 0))
+            except LLMError as e:
+                raise RuntimeError(f"the moderator could not write the report: {e.message}") from e
         body, agreed = discussion.split_agreed(report)
         meta = {"rounds": [[{k: v for k, v in r.items()} for r in stm] for stm in rounds], "persona": shared, "notes": notes, "skipped": skipped,
-                "agreed": agreed, "focus": focus, "adversary": adversary}
+                "agreed": agreed, "focus": focus, "adversary": adversary, "lead": led_by}
         self.say(body + ("\n\n" + "\n".join(notes) if notes else ""), kind="discussion", **meta)
         if not apply:
             return self._finish("completed")

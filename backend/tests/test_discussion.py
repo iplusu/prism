@@ -139,7 +139,7 @@ def test_needs_the_moderator_llm(alice):
 
 def test_discuss_spec_is_validated(alice):
     pid = new_sample_project(alice)["id"]
-    for bad in ({"tools": ["rm"]}, {"rounds": 0}, {"rounds": 4}, {"focus": "x"}, {"focus": "plan"}, {"persona": "x" * 2001}):
+    for bad in ({"tools": ["rm"]}, {"rounds": 0}, {"rounds": 6}, {"focus": "x"}, {"focus": "plan"}, {"persona": "x" * 2001}):
         r = alice.post(f"/api/projects/{pid}/tasks", json={"request": "r", "mode": "llm", "context": {"scope": "project", "discuss": bad}})
         assert r.status_code == 422, bad
 
@@ -362,3 +362,55 @@ def test_the_devils_advocate_role_reaches_only_the_last_tool(alice, llm, monkeyp
     assert next(m for m in msgs if m["meta"].get("kind") == "discussion")["meta"]["adversary"] == "claude"
     mod = next(r["messages"][-1]["content"] for r in llm.requests if "### Round 1" in r["messages"][-1]["content"])
     assert "Claude Code was assigned to be the devil's advocate" in mod
+
+
+def test_up_to_five_rounds_are_accepted_and_three_is_the_default(alice, llm):
+    from app.routers.tasks import DiscussIn
+    assert DiscussIn().rounds == 3 and DiscussIn(rounds=5).rounds == 5
+    with pytest.raises(Exception):
+        DiscussIn(rounds=6)
+    _tools()
+    pid = new_sample_project(alice)["id"]
+    llm.script = [{"content": REPORT + "## FINAL CONCLUSION\nx"}]
+    tid = _discuss(alice, pid, rounds=5, focus="custom")
+    drain()
+    t, msgs = _msgs(alice, tid)
+    assert t["status"] == "completed", t["error"]
+    assert 2 <= len(next(m for m in msgs if m["meta"].get("kind") == "discussion")["meta"]["rounds"]) <= 5
+
+
+def test_a_tool_can_lead_and_write_the_report_instead_of_the_orchestrator_llm(alice, llm):
+    _tools()
+    pid = new_sample_project(alice)["id"]
+    llm.script = [{"content": REPORT}]
+    tid = _discuss(alice, pid, tools=["codex", "claude"], lead="antigravity", rounds=3, focus="custom", apply=False)
+    drain()
+    t, msgs = _msgs(alice, tid)
+    assert t["status"] == "completed", t["error"]
+    d = next(m for m in msgs if m["meta"].get("kind") == "discussion")
+    assert d["meta"]["lead"] == "antigravity" and "STATEMENT by Agy" in d["content"] and "forbids_edits=True" in d["content"]
+    assert not any("### Round 1" in r["messages"][-1]["content"] for r in llm.requests)  # the LLM did not write the report
+
+
+def test_when_the_leading_tool_fails_the_orchestrator_llm_writes_the_report(alice, llm):
+    _tools()
+    register_override("antigravity", FakeAdapter("antigravity", "auth-fail"))
+    pid = new_sample_project(alice)["id"]
+    llm.script = [{"content": REPORT + "## FINAL CONCLUSION\nx"}]
+    tid = _discuss(alice, pid, tools=["codex", "claude"], lead="antigravity", rounds=3, focus="custom", apply=False)
+    drain()
+    t, msgs = _msgs(alice, tid)
+    assert t["status"] == "completed", t["error"]
+    d = next(m for m in msgs if m["meta"].get("kind") == "discussion")
+    assert d["meta"]["lead"] is None and "They agree." in d["content"] and "could not write the report" in d["content"]
+    assert any("### Round 1" in r["messages"][-1]["content"] for r in llm.requests)
+
+
+def test_the_default_leader_is_the_orchestrator_llm(alice, llm):
+    _tools()
+    pid = new_sample_project(alice)["id"]
+    llm.script = [{"content": REPORT}]
+    tid = _discuss(alice, pid, tools=["codex", "claude"], rounds=3, focus="custom", apply=False)
+    drain()
+    t, msgs = _msgs(alice, tid)
+    assert t["status"] == "completed" and next(m for m in msgs if m["meta"].get("kind") == "discussion")["meta"]["lead"] is None
