@@ -28,7 +28,7 @@ interface Props {
 }
 
 // Templates for the Roundtable prompt (read-only analyses; they only fill the prompt box).
-const PRESETS: { id: string; label: string; title: string; prompt: string }[] = [
+const PRESETS: { id: string; label: string; title: string; prompt: string; apply?: boolean }[] = [
   {
     id: "terms",
     label: "Terminology",
@@ -42,6 +42,22 @@ const PRESETS: { id: string; label: string; title: string; prompt: string }[] = 
     title: "Finds claims that need a citation. Never invents references. Answers only; changes nothing.",
     prompt:
       "Find statements that present prior work, established facts or comparisons without a \\cite, or that cite a key missing from the bibliography. Quote each sentence with file and line, say why a citation is needed, and suggest search keywords. Do NOT invent references, authors, titles or DOIs. Do not change any file. Reply in the language of the manuscript.",
+  },
+  {
+    id: "review",
+    label: "Review the manuscript",
+    title: "Weaknesses in claims, evidence, clarity, structure and presentation, ranked; the agreed fixes can become a proposal.",
+    apply: true,
+    prompt:
+      "Review this manuscript as a critical but fair peer reviewer for the venue it appears to target. Find its real weaknesses in claims, evidence, clarity, structure and presentation. For each weakness give file and line, why it matters, and the concrete change; rank them by importance, and agree on what must be fixed. Do not invent related work, citations or results. Reply in the language of the manuscript.",
+  },
+  {
+    id: "direction",
+    label: "Revision direction",
+    title: "In which direction and priority to revise; the agreed edits can become a proposal.",
+    apply: true,
+    prompt:
+      "Decide in which direction and in what priority this manuscript should be revised. List the revisions in priority order; for each give what to change, where (file and line), and why it comes before the next one. Also say what should NOT be changed. Do not invent results or citations. Reply in the language of the manuscript.",
   },
 ];
 
@@ -160,7 +176,6 @@ export default function AiPanel(p: Props) {
   const [dApply, setDApply] = useState(false);
   const [dAdversary, setDAdversary] = useState(false);
   const [dLead, setDLead] = useState("");
-  const [dPersona, setDPersona] = useState("");
   const [dAsk, setDAsk] = useState("");
   const [dTools, setDTools] = useState<Record<string, boolean>>({});
   const dSys = useAsync(() => (skillOpen ? api.system() : Promise.resolve(null)), [skillOpen]);
@@ -171,17 +186,16 @@ export default function AiPanel(p: Props) {
   const dChosen = dAll.filter((x) => x.status === "available" && dTools[x.name] !== false).map((x) => x.name);
   const needsPrompt = dFocus === "custom" && dMode === "discuss";
   const startSkill = useAction(async () => {
-    const role = dPersona.trim() ? `\nRole for the participants: ${dPersona.trim()}` : "";
     const ask = dAsk.trim() ? `\n\n${dAsk.trim()}` : "";
     const t =
       dMode === "reviews"
-        ? await api.createTask(p.pid, `Reviewer report${dPersona.trim() ? ` as: ${dPersona.trim()}` : ""}${ask}`, "llm", {
+        ? await api.createTask(p.pid, `Reviewer report${ask}`, "llm", {
             scope: "project",
-            review: { tools: dChosen, persona: dPersona.trim(), korean: dKorean },
+            review: { tools: dChosen, korean: dKorean },
           })
-        : await api.createTask(p.pid, `Roundtable: ${FOCUS_TITLE[dFocus]}${role}${ask}`, "llm", {
+        : await api.createTask(p.pid, `Roundtable: ${FOCUS_TITLE[dFocus]}${ask}`, "llm", {
             scope: "project",
-            discuss: { tools: dChosen, focus: dFocus, rounds: dRounds, persona: dPersona.trim(), apply: dApply, korean: dKorean, adversary: dAdversary, ...(dLead ? { lead: dLead } : {}) },
+            discuss: { tools: dChosen, focus: dFocus, rounds: dRounds, apply: dApply, korean: dKorean, adversary: dAdversary, ...(dLead ? { lead: dLead } : {}) },
           });
     tasks.setData([t, ...(tasks.data ?? [])]);
     setSkillOpen(false);
@@ -253,15 +267,15 @@ export default function AiPanel(p: Props) {
               <div className="skill-form">
                 <label className="field">
                   <span className="tiny muted">
-                    {needsPrompt ? "Your prompt (what the tools should work on)" : "Your prompt (optional; every tool receives it)"}
+                    {needsPrompt ? "Your prompt (what the tools should work on; you can also give them a role, e.g. \"As a JAMS referee, …\")" : "Your prompt (optional; every tool receives it; you can also give them a role)"}
                   </span>
                   <textarea rows={4} value={dAsk} maxLength={4000} autoFocus onChange={(e) => setDAsk(e.target.value)}
                     placeholder='e.g. "Is the ablation in Section 5 enough to support claim 2? If not, what is the smallest extra experiment?"' />
                 </label>
-                <div className="tiny muted">Templates (fill the prompt):</div>
+                <div className="tiny muted">Templates (fill the prompt; the review and revision templates also switch on the proposal):</div>
                 <div className="presets">
                   {PRESETS.map((x) => (
-                    <button type="button" key={x.id} className="btn btn-sm" title={x.title} onClick={() => { setDAsk(x.prompt); setDFocus("custom"); setDMode("discuss"); setDApply(false); }}>
+                    <button type="button" key={x.id} className="btn btn-sm" title={x.title} onClick={() => { setDAsk(x.prompt); setDFocus("custom"); setDMode("discuss"); setDApply(!!x.apply); }}>
                       {x.label}
                     </button>
                   ))}
@@ -277,12 +291,10 @@ export default function AiPanel(p: Props) {
                   {dMode === "discuss" && (
                     <label className="field">
                       <span className="tiny muted">Goal</span>
-                      <select value={dFocus} onChange={(e) => { const f = e.target.value as Focus; setDFocus(f); setDApply(f === "review" || f === "direction"); }}>
+                      <select value={dFocus} onChange={(e) => { const f = e.target.value as Focus; setDFocus(f); setDApply(false); }}>
                         <option value="custom">Your prompt is the goal</option>
-                        <option value="review">Manuscript review (find weaknesses)</option>
                         <option value="strategy">Strategy (positioning, storyline, order of work)</option>
                         <option value="experiments">Experiment design (protocols: arms, N, analysis, decision rule)</option>
-                        <option value="direction">Revision direction (what to change, in what order)</option>
                       </select>
                     </label>
                   )}
@@ -309,10 +321,6 @@ export default function AiPanel(p: Props) {
                       </label>
                     </>
                   )}
-                  <label className="field">
-                    <span className="tiny muted">Role for the participants (optional; who they act as, not the task)</span>
-                    <input value={dPersona} maxLength={2000} placeholder="e.g. a JAMS referee" onChange={(e) => setDPersona(e.target.value)} />
-                  </label>
                 </div>
                 <div className="skill-cols">
                   <div className="skill-col">

@@ -67,7 +67,7 @@ await step("the old buttons are gone (presets, Reviewer report, Tool discussion)
   const old = t.filter((x) => /^(Terminology|Missing citations|Reviewer report…|Tool discussion…|Discussion skill…)$/.test(x));
   if (old.length) throw new Error(old.join(", "));
 });
-await step("the dialog opens with prompt, how, goal, rounds, role, three tools, Korean; Start needs a prompt", async () => {
+await step("the dialog opens with prompt, how, goal, rounds, lead, three tools, Korean; Start needs a prompt", async () => {
   await btn("^Roundtable$");
   await p.waitForSelector(".skill-form", { timeout: 10000 });
   await p.waitForFunction(() => document.querySelectorAll(".skill-form input[type=checkbox]").length >= 6, { timeout: 15000 });
@@ -76,30 +76,43 @@ await step("the dialog opens with prompt, how, goal, rounds, role, three tools, 
   await p.screenshot({ path: `${OUT}/rt-dialog.png` });
   return (await p.evaluate(() => [...document.querySelectorAll(".skill-form .check-row")].map((l) => l.textContent.trim().replace(/\s+/g, " ")))).join(" | ");
 });
-await step("Start sends a discuss task: custom goal, the prompt, 5 rounds, role, devil's advocate", async () => {
+await step("Goal has 3 choices; the Review template fills the prompt and switches the proposal on, Terminology leaves it off", async () => {
+  const goals = await p.evaluate(() => [...document.querySelectorAll(".skill-form select")][1].options.length);
+  if (goals !== 3) throw new Error("goal options: " + goals);
+  const state = () => p.evaluate(() => ({ text: document.querySelector(".skill-form textarea").value, apply: [...document.querySelectorAll(".skill-form .check-row")].find((l) => /proposal/.test(l.textContent)).querySelector("input").checked }));
+  await btn("^Review the manuscript$");
+  const a = await state();
+  if (!/peer reviewer/.test(a.text) || !a.apply) throw new Error(JSON.stringify(a));
+  await btn("^Terminology$");
+  const b = await state();
+  if (!/terminology/i.test(b.text) || b.apply) throw new Error(JSON.stringify(b));
+  await p.evaluate(() => { const t = document.querySelector(".skill-form textarea"); t.focus(); });
+  await p.keyboard.down("Control"); await p.keyboard.press("a"); await p.keyboard.up("Control"); await p.keyboard.press("Backspace");
+});
+await step("Start sends a discuss task: custom goal, the prompt, 5 rounds, devil's advocate", async () => {
   await p.type(".skill-form textarea", "Is the ablation enough for claim 2?");
   const sels = await p.$$(".skill-form select"); // how, goal, rounds
   await sels[2].select("5");
   await sels[3].select("claude"); // Lead
-  await p.type('.skill-form input[maxlength="2000"]', "a JAMS referee");
   await p.evaluate(() => [...document.querySelectorAll(".skill-form .check-row")].find((l) => /devil/.test(l.textContent)).querySelector("input").click());
   await btn("^Start with 3 tools$");
   await new Promise((r) => setTimeout(r, 800));
   const t = await p.evaluate(() => window.__tasks?.at(-1));
   if (!t) throw new Error("no POST");
   const d = t.context?.discuss;
-  if (!d || d.focus !== "custom" || d.rounds !== 5 || d.persona !== "a JAMS referee" || d.adversary !== true || d.lead !== "claude" || d.tools.length !== 3 || d.apply !== false) throw new Error(JSON.stringify(t));
+  if (!d || d.focus !== "custom" || d.rounds !== 5 || !!d.persona || d.adversary !== true || d.lead !== "claude" || d.tools.length !== 3 || d.apply !== false) throw new Error(JSON.stringify(t));
   if (!/Is the ablation enough for claim 2\?/.test(t.request) || !/^Roundtable:/.test(t.request)) throw new Error(t.request);
   return JSON.stringify(d);
 });
 await step("independent reviews mode sends a review task and hides the discussion-only options", async () => {
   const sels = await p.$$(".skill-form select");
   await sels[0].select("reviews");
-  const hidden = await p.evaluate(() => !/Rounds|Goal/.test(document.querySelector(".skill-form").textContent));
-  if (!hidden) throw new Error("goal/rounds still shown");
+  const hidden = await p.evaluate(() => !/Rounds|Goal|Lead|Role/.test(document.querySelector(".skill-form").textContent));
+  if (!hidden) throw new Error("goal/rounds/lead still shown");
   await btn("^Start with 3 tools$");
   await new Promise((r) => setTimeout(r, 800));
   const t = await p.evaluate(() => window.__tasks?.at(-1));
+  if (t.context.review?.persona) throw new Error("persona sent");
   if (!t.context?.review || t.context?.discuss) throw new Error(JSON.stringify(t));
 });
 await step("phone 412x915: AI tab has no horizontal overflow, Roundtable reachable and the dialog fits", async () => {
