@@ -44,30 +44,6 @@ await step("login, create the sample project, open the workspace", async () => {
   await p.waitForSelector("#ai-text", { timeout: 20000 });
   return PID;
 });
-await step("Tool discussion… opens: three tools with real status, topic, rounds, apply, role", async () => {
-  await btn("^Tool discussion…$");
-  await p.waitForFunction(() => document.querySelectorAll('[aria-label="Tool discussion"] input[type=checkbox]').length >= 4, { timeout: 15000 });
-  const labels = await p.evaluate(() => [...document.querySelectorAll('[aria-label="Tool discussion"] .check-row')].map((l) => l.textContent.trim().replace(/\s+/g, " ")));
-  await p.screenshot({ path: `${OUT}/ds-setup.png` });
-  return labels.join(" | ");
-});
-await step("Start sends a discuss task with the chosen options", async () => {
-  await p.evaluate(() => (window.__block = true));
-  await p.select('[aria-label="Tool discussion"] select:nth-of-type(1)', "direction").catch(() => {});
-  const sels = await p.$$('[aria-label="Tool discussion"] select');
-  await sels[0].select("direction"); await sels[1].select("3");
-  await p.type('[aria-label="Tool discussion"] input[maxlength="2000"]', "a JAMS referee");
-  await p.evaluate(() => { const c = [...document.querySelectorAll('[aria-label="Tool discussion"] input[type=checkbox]')].at(-1); c.click(); }); // untick apply
-  const enabled = await p.evaluate(() => { const b = [...document.querySelectorAll("button")].find((x) => /^Start with/.test(x.textContent.trim())); return b ? [b.textContent.trim(), b.disabled] : null; });
-  if (!enabled) throw new Error("no Start button");
-  if (enabled[1]) return "Start is disabled: " + enabled[0] + " (fewer than 2 tools available here)";
-  await btn("^Start with");
-  await p.waitForFunction(() => !!window.__task, { timeout: 5000 });
-  const t = await p.evaluate(() => window.__task);
-  const d = t.context?.discuss;
-  if (t.mode !== "llm" || !d || d.focus !== "direction" || d.rounds !== 3 || d.persona !== "a JAMS referee" || d.apply !== false || t.context.scope !== "project") throw new Error(JSON.stringify(t).slice(0, 300));
-  return JSON.stringify(d);
-});
 await step("a discussion message renders: summary, one expandable block per round, agree marks", async () => {
   execSync(process.env.INS + " " + PID, { stdio: "pipe" });
   await p.evaluate(() => (window.__block = false));

@@ -2326,3 +2326,10 @@ td.row-actions {
   .ai-extras[open] { display: flex; flex-direction: column; gap: 6px; padding-bottom: 8px; }
   .ai-input textarea { min-height: 44px; }
 }
+
+.skill-form { display: flex; flex-direction: column; gap: 8px; }
+.skill-form textarea { width: 100%; resize: vertical; }
+.ctx-line { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.ctx-line .ctx-desc { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ctx-line .check-row { flex: none; }
+.skill-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 8px; }

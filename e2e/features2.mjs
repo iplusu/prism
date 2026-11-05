@@ -107,28 +107,7 @@ await step("after compiling, the arXiv zip is real: has main.bbl produced by Bib
   if (info.status !== 200 || !info.hasBbl || info.hasAux) throw new Error(JSON.stringify(info));
   return JSON.stringify(info);
 });
-let taskId;
-if (process.env.SKIP_AI) console.log("SKIP AI preset (SKIP_AI set)");
-else await step("AI preset 'Terminology': answers from the real orchestrator LLM; no proposal, no file changed", async () => {
-  const before = (await api("GET", `/api/projects/${pid}/files/content?path=main.tex`)).sha;
-  await clickText("button", "Terminology");
-  const t0 = Date.now();
-  for (;;) {
-    const ts = await api("GET", `/api/projects/${pid}/tasks`);
-    const t = ts[0];
-    if (t && ["completed", "failed", "cancelled", "needs_review"].includes(t.status)) { taskId = t.id; if (t.status !== "completed") throw new Error(`status ${t.status}: ${t.error}`); if (t.proposal_id) throw new Error("a proposal was created"); break; }
-    if (Date.now() - t0 > 900000) throw new Error("timeout after 15 min");
-    await sleep(5000);
-  }
-  const msgs = await api("GET", `/api/projects/${pid}/messages`);
-  const answer = msgs.filter((m) => m.role !== "user").pop();
-  if (!answer || answer.content.length < 80) throw new Error("no real answer: " + JSON.stringify(answer));
-  const after = (await api("GET", `/api/projects/${pid}/files/content?path=main.tex`)).sha;
-  if (before !== after) throw new Error("main.tex changed");
-  await p.waitForSelector(".ai-messages", { timeout: 5000 });
-  await p.screenshot({ path: `${OUT}/f8-preset-answer.png` });
-  return `${Math.round((Date.now() - t0) / 1000)} s, ${answer.content.length} chars: ${answer.content.slice(0, 160).replace(/\s+/g, " ")}`;
-});
+// (the analysis-preset button was folded into the Roundtable dialog; that UI is checked by roundtableui.mjs)
 await step("no uncaught page errors", async () => {
   const real = errors.filter((e) => !/cross-origin|Permission denied to access property/i.test(e));
   if (real.length) throw new Error(real.join(" | "));

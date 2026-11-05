@@ -368,9 +368,11 @@ class Runner:
             raise RuntimeError("a discussion needs at least two available tools: " + "; ".join(f"{x['tool']} ({x['reason']})" for x in skipped) + " (see Settings → Tools)")
         focus = spec.get("focus") if spec.get("focus") in discussion.FOCUS else "review"
         total = max(1, min(int(spec.get("rounds") or 2), 3))
-        apply = bool(spec["apply"]) if spec.get("apply") is not None else focus not in ("strategy", "experiments")
+        apply = bool(spec["apply"]) if spec.get("apply") is not None else focus not in ("strategy", "experiments", "custom")
         korean = bool(spec["korean"]) if spec.get("korean") is not None else discussion._has_hangul(t.request)
         shared = (spec.get("persona") or "").strip()
+        adversary = use[-1] if spec.get("adversary") else None  # the last selected tool stress-tests the others
+        roles = {x: (shared + " " if shared else "") + (discussion.ADVERSARY_ROLE if x == adversary else "") for x in use}
         names = {x: reviewers.LABELS.get(x, x) for x in use}
         self.set_status("running")
         self.emit("discussion", f"{len(use)} participants ({', '.join(names.values())}), up to {total} round(s), goal: {focus}",
@@ -388,11 +390,11 @@ class Runner:
                 break
             last = rnd == total
             if rnd == 1:
-                prompts = {x: discussion.opening_prompt(focus, shared, self.project.main_file, t.request) for x in active}
+                prompts = {x: discussion.opening_prompt(focus, roles[x].strip(), self.project.main_file, t.request) for x in active}
             else:
                 prev = {r["tool"]: r for r in rounds[-1] if r["status"] == "succeeded"}
-                prompts = {x: discussion.reply_prompt(focus, shared, self.project.main_file, t.request, prev[x],
-                                                       [prev[o] for o in active if o != x and o in prev], rnd, last) for x in active}
+                prompts = {x: discussion.reply_prompt(focus, roles[x].strip(), self.project.main_file, t.request, prev[x],
+                                                       [prev[o] for o in active if o != x and o in prev], rnd, last, x) for x in active}
             self.emit("discussion_round", f"round {rnd}/{total}: " + ", ".join(names[x] for x in active), round=rnd, tools=active)
             res = self._tool_round(active, prompts, f"discuss{rnd}", per)
             stm = []
@@ -400,6 +402,8 @@ class Runner:
                 r = res.get(x) or {"tool": x, "status": "failed", "text": "", "error": "no result"}
                 stm.append({"tool": x, "label": names[x], "status": r["status"], "text": r["text"], "error": r["error"][:500],
                             "agree": discussion.agrees(r["text"]) if r["status"] == "succeeded" else None, "round": rnd})
+                if rnd >= 2 and r["status"] == "succeeded":
+                    stm[-1]["echo"] = discussion.echoes(r["text"], [p for p in rounds[-1] if p["tool"] != r["tool"] and p["status"] == "succeeded"])
             rounds.append(stm)
             ok = [r["tool"] for r in stm if r["status"] == "succeeded"]
             for r in stm:
@@ -417,13 +421,13 @@ class Runner:
         delivered = [[r for r in stm if r["status"] == "succeeded"] for stm in rounds]
         self.emit("llm", f"moderating with {active_model()}")
         try:
-            report = reviewers.synthesize(get_provider(), discussion.moderator_messages(focus, t.request, delivered, self.project.main_file, apply, korean),
+            report = reviewers.synthesize(get_provider(), discussion.moderator_messages(focus, t.request, delivered, self.project.main_file, apply, korean, adversary),
                                          min_tokens=(14_000 if focus == "experiments" else 8_000) + (6_000 if korean else 0))
         except LLMError as e:
             raise RuntimeError(f"the moderator could not write the report: {e.message}") from e
         body, agreed = discussion.split_agreed(report)
         meta = {"rounds": [[{k: v for k, v in r.items()} for r in stm] for stm in rounds], "persona": shared, "notes": notes, "skipped": skipped,
-                "agreed": agreed, "focus": focus}
+                "agreed": agreed, "focus": focus, "adversary": adversary}
         self.say(body + ("\n\n" + "\n".join(notes) if notes else ""), kind="discussion", **meta)
         if not apply:
             return self._finish("completed")

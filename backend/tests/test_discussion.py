@@ -246,7 +246,7 @@ def test_a_review_discussion_ends_in_one_decided_conclusion(alice, llm):
     for needle in ("## FINAL CONCLUSION", "DECIDED", "[moderator's recommendation]", "priority order", "how it was decided above"):
         assert needle in mod, needle
     # but the moderator's own recommendations never become the edit goal
-    assert "never include contested points or the moderator's own recommendations" in mod.lower()
+    assert "never include contested points, points under for your decision, or the moderator's own recommendations" in mod.lower()
     # strategy and experiments keep their own full-design section instead of a second conclusion
     for focus in ("strategy", "experiments"):
         from app.agent import discussion
@@ -296,3 +296,69 @@ def test_the_role_is_kept_with_the_result_so_it_can_be_shown(alice, llm):
     _, msgs = _msgs(alice, tid)
     d = next(m for m in msgs if m["meta"].get("kind") == "discussion")
     assert d["meta"]["persona"] == "an ACL area chair"
+
+
+def test_mentions_are_forwarded_to_the_addressed_tool_and_custom_goal_is_the_request():
+    from app.agent import discussion as d
+    others = [{"tool": "claude", "text": "Sec 3 is thin.\n@Codex: does Table 2 really use 5 seeds?\nOther line"},
+              {"tool": "antigravity", "text": "@Claude Code why drop section 4?"}]
+    assert d.addressed_to("codex", others) == ["Claude Code: @Codex: does Table 2 really use 5 seeds?"]
+    assert d.addressed_to("claude", others) == ["Antigravity: @Claude Code why drop section 4?"]
+    assert d.addressed_to("antigravity", others) == []
+    own = {"tool": "codex", "text": "mine"}
+    p = d.reply_prompt("custom", "", "main.tex", "Is the ablation convincing?", own, others, 2, True, "codex")
+    assert "# Addressed to you" in p and "5 seeds" in p and "@Claude Code" in p.split("# Addressed to you")[0] + "x"
+    assert "Is the ablation convincing?" in p and "work on exactly what the user's request" in p
+    assert "Addressed to you" not in d.reply_prompt("custom", "", "main.tex", "q", own, others, 2, True, "antigravity")
+    assert "@Codex, @Claude Code or @Antigravity" in d.opening_prompt("custom", "", "main.tex", "q")
+
+
+def test_custom_goal_runs_with_the_users_prompt_and_makes_no_proposal_by_default(alice, llm):
+    _tools()
+    pid = new_sample_project(alice)["id"]
+    before = read_text(alice, pid, "main.tex")["text"]
+    llm.script = [{"content": REPORT + "## FINAL CONCLUSION\nYes.\n" + AGREED}]
+    tid = _discuss(alice, pid, rounds=1, focus="custom")
+    drain()
+    t, msgs = _msgs(alice, tid)
+    assert t["status"] == "completed", t["error"]
+    assert not any(m["meta"].get("proposal_id") for m in msgs) and read_text(alice, pid, "main.tex")["text"] == before
+    mod = next(r["messages"][-1]["content"] for r in llm.requests if "### Round 1" in r["messages"][-1]["content"])
+    assert "work on exactly what the user's request" in mod and "AGREED CHANGES" not in mod
+
+
+def test_agreement_must_be_earned_and_echoes_are_flagged():
+    from app.agent import discussion as d
+    base = " ".join(f"word{i}" for i in range(60))
+    assert d.echoes(base + " extra", [{"tool": "claude", "text": base}]) == "claude"
+    assert d.echoes("completely different " * 40, [{"tool": "claude", "text": base}]) is None
+    assert d.echoes("short", [{"tool": "claude", "text": "short"}]) is None
+    p = d.reply_prompt("review", "", "main.tex", "", {"tool": "codex", "text": "x"}, [], 2, True, "codex")
+    assert "Agreement must be earned" in p and "no addition" in p
+
+
+def test_the_moderator_gets_a_for_your_decision_section_and_the_flags():
+    from app.agent import discussion as d
+    st = [{"tool": "codex", "label": "Codex", "text": "a", "round": 1}, {"tool": "claude", "label": "Claude Code", "text": "b", "round": 2, "echo": "codex"}]
+    m = d.moderator_messages("review", "q", [st], "main.tex", True, None, "claude")[-1]["content"]
+    assert "## FOR YOUR DECISION" in m and "points under FOR YOUR DECISION" in m
+    assert "devil's advocate" in m and "Claude Code (round 2) largely repeats Codex" in m
+
+
+def test_the_devils_advocate_role_reaches_only_the_last_tool(alice, llm, monkeypatch):
+    from app.agent import discussion as d
+    seen = {}
+    orig = d.opening_prompt
+    monkeypatch.setattr(d, "opening_prompt", lambda focus, persona, *a: seen.setdefault(len(seen), persona) and orig(focus, persona, *a))
+    _tools()
+    pid = new_sample_project(alice)["id"]
+    llm.script = [{"content": REPORT + "## FINAL CONCLUSION\nx"}]
+    tid = _discuss(alice, pid, tools=["codex", "claude"], focus="custom", rounds=1, adversary=True, persona="a referee")
+    drain()
+    t, msgs = _msgs(alice, tid)
+    assert t["status"] == "completed", t["error"]
+    roles = list(seen.values())
+    assert roles[0] == "a referee" and "devil's advocate" in roles[1] and roles[1].startswith("a referee")
+    assert next(m for m in msgs if m["meta"].get("kind") == "discussion")["meta"]["adversary"] == "claude"
+    mod = next(r["messages"][-1]["content"] for r in llm.requests if "### Round 1" in r["messages"][-1]["content"])
+    assert "Claude Code was assigned to be the devil's advocate" in mod

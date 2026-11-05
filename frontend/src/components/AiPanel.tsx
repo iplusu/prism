@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, ApiError } from "../api";
 import type { ChatMessage, DiscussionStatement, Proposal, Task, TaskContextSpec, TaskMode } from "../types";
-import { MODE_LABELS, modeLabel, relTime, useAction, useAsync, useMediaQuery } from "../util";
+import { MODE_LABELS, modeLabel, relTime, useAction, useAsync } from "../util";
 import type { SelectionInfo } from "./CodeEditor";
 import { IconReview, IconRetry, IconStop, IconUpload } from "./Icons";
 import { EventList, executorFromEvents, isActive, LiveDot, useTaskStream } from "./TaskProgress";
@@ -27,7 +27,7 @@ interface Props {
   onApplied: (paths: string[]) => void;
 }
 
-// Analysis presets. They run with answer_only: the server never lets them edit files or call a tool.
+// Templates for the Roundtable prompt (read-only analyses; they only fill the prompt box).
 const PRESETS: { id: string; label: string; title: string; prompt: string }[] = [
   {
     id: "terms",
@@ -44,6 +44,15 @@ const PRESETS: { id: string; label: string; title: string; prompt: string }[] = 
       "Find statements that present prior work, established facts or comparisons without a \\cite, or that cite a key missing from the bibliography. Quote each sentence with file and line, say why a citation is needed, and suggest search keywords. Do NOT invent references, authors, titles or DOIs. Do not change any file. Reply in the language of the manuscript.",
   },
 ];
+
+type Focus = "custom" | "review" | "direction" | "strategy" | "experiments";
+const FOCUS_TITLE: Record<Focus, string> = {
+  custom: "work on the prompt",
+  review: "review the manuscript",
+  strategy: "plan the paper's strategy",
+  experiments: "design the additional experiments",
+  direction: "decide the revision direction",
+};
 
 const MODES: TaskMode[] = ["auto", "llm", "codex", "claude", "antigravity"];
 
@@ -140,64 +149,41 @@ export default function AiPanel(p: Props) {
     refreshAll();
   });
 
-  const [reviewOpen, setReviewOpen] = useState(false);
-  const [persona, setPersona] = useState("");
-  const narrow = useMediaQuery("(max-width: 899px)");
   // One switch for every request: also answer in Korean. On by default for a Korean browser.
   const [dKorean, setDKorean] = useState(() => (navigator.language || "").toLowerCase().startsWith("ko"));
   const KO_ASK = "\n\nAlso give the complete answer in Korean (한국어), as a last section.";
   const withKo = (s: string) => (dKorean && !/[\uac00-\ud7a3]/.test(s) ? s + KO_ASK : s);
-  const [reviewTools, setReviewTools] = useState<Record<string, boolean>>({});
-  const sys = useAsync(() => (reviewOpen ? api.system() : Promise.resolve(null)), [reviewOpen]);
-  const reviewers = useMemo(
-    () => (sys.data?.tools ?? []).filter((x) => ["codex", "claude", "antigravity"].includes(x.name)),
-    [sys.data],
-  );
-  const chosen = reviewers.filter((x) => x.status === "available" && reviewTools[x.name] !== false).map((x) => x.name);
-  const startReview = useAction(async () => {
-    const t = await api.createTask(
-      p.pid,
-      persona.trim() ? `Reviewer report as: ${persona.trim()}` : "Reviewer report",
-      "llm",
-      { scope: "project", review: { tools: chosen, persona: persona.trim(), korean: dKorean } },
-    );
-    tasks.setData([t, ...(tasks.data ?? [])]);
-    setReviewOpen(false);
-    refreshAll();
-  });
-
-  const [discussOpen, setDiscussOpen] = useState(false);
-  const [dFocus, setDFocus] = useState<"review" | "direction" | "strategy" | "experiments">("review");
+  const [skillOpen, setSkillOpen] = useState(false);
+  const [dMode, setDMode] = useState<"discuss" | "reviews">("discuss");
+  const [dFocus, setDFocus] = useState<Focus>("custom");
   const [dRounds, setDRounds] = useState(2);
-  const [dApply, setDApply] = useState(true);
+  const [dApply, setDApply] = useState(false);
+  const [dAdversary, setDAdversary] = useState(false);
   const [dPersona, setDPersona] = useState("");
   const [dAsk, setDAsk] = useState("");
   const [dTools, setDTools] = useState<Record<string, boolean>>({});
-  const dSys = useAsync(() => (discussOpen ? api.system() : Promise.resolve(null)), [discussOpen]);
+  const dSys = useAsync(() => (skillOpen ? api.system() : Promise.resolve(null)), [skillOpen]);
   const dAll = useMemo(
     () => (dSys.data?.tools ?? []).filter((x) => ["codex", "claude", "antigravity"].includes(x.name)),
     [dSys.data],
   );
   const dChosen = dAll.filter((x) => x.status === "available" && dTools[x.name] !== false).map((x) => x.name);
-  const startDiscuss = useAction(async () => {
-    const t = await api.createTask(
-      p.pid,
-      (dFocus === "review" ? "Tool discussion: review the manuscript"
-        : dFocus === "strategy" ? "Tool discussion: plan the paper's strategy"
-        : dFocus === "experiments" ? "Tool discussion: design the additional experiments" : "Tool discussion: decide the revision direction")
-        + (dPersona.trim() ? `\nRole for the participants: ${dPersona.trim()}` : "")
-        + (dAsk.trim() ? `\n\n${dAsk.trim()}` : ""),
-      "llm",
-      { scope: "project", discuss: { tools: dChosen, focus: dFocus, rounds: dRounds, persona: dPersona.trim(), apply: dApply, korean: dKorean } },
-    );
+  const needsPrompt = dFocus === "custom" && dMode === "discuss";
+  const startSkill = useAction(async () => {
+    const role = dPersona.trim() ? `\nRole for the participants: ${dPersona.trim()}` : "";
+    const ask = dAsk.trim() ? `\n\n${dAsk.trim()}` : "";
+    const t =
+      dMode === "reviews"
+        ? await api.createTask(p.pid, `Reviewer report${dPersona.trim() ? ` as: ${dPersona.trim()}` : ""}${ask}`, "llm", {
+            scope: "project",
+            review: { tools: dChosen, persona: dPersona.trim(), korean: dKorean },
+          })
+        : await api.createTask(p.pid, `Roundtable: ${FOCUS_TITLE[dFocus]}${role}${ask}`, "llm", {
+            scope: "project",
+            discuss: { tools: dChosen, focus: dFocus, rounds: dRounds, persona: dPersona.trim(), apply: dApply, korean: dKorean, adversary: dAdversary },
+          });
     tasks.setData([t, ...(tasks.data ?? [])]);
-    setDiscussOpen(false);
-    refreshAll();
-  });
-
-  const preset = useAction(async (prompt: string) => {
-    const t = await api.createTask(p.pid, withKo(prompt), "llm", { scope: "project", answer_only: true });
-    tasks.setData([t, ...(tasks.data ?? [])]);
+    setSkillOpen(false);
     refreshAll();
   });
 
@@ -211,6 +197,12 @@ export default function AiPanel(p: Props) {
       <div className="panel-head">
         <span className="side-title">AI assistant</span>
         <div className="spacer" />
+        {p.canEdit && (
+          <button type="button" className="btn btn-sm" disabled={send.busy} onClick={() => setSkillOpen(true)}
+            title="Codex, Claude Code and Antigravity work on your prompt and answer each other; the orchestrator moderates.">
+            Roundtable
+          </button>
+        )}
         {p.canEdit && (messages.data?.length ?? 0) > 0 && (
           <ConfirmButton
             label="New chat"
@@ -255,117 +247,98 @@ export default function AiPanel(p: Props) {
       </div>
       {p.canEdit ? (
         <form className="ai-input" onSubmit={submit}>
-          <Fold narrow={narrow}>
-          <label className="check-row tiny" title="Every request below (chat, analysis presets, reviewer report, discussion) also gets a Korean version of the answer">
-            <input type="checkbox" checked={dKorean} onChange={(e) => setDKorean(e.target.checked)} /> Also answer in Korean (한국어)
-          </label>
-          <div className="presets" role="group" aria-label="Analysis presets (answer only, nothing is changed)">
-            {PRESETS.map((x) => (
-              <button type="button" key={x.id} className="btn btn-sm" title={x.title} disabled={send.busy || preset.busy} onClick={() => void preset.run(x.prompt)}>
-                {x.label}
-              </button>
-            ))}
-          </div>
-          <button type="button" className="btn btn-sm" aria-expanded={reviewOpen} disabled={send.busy || preset.busy} onClick={() => setReviewOpen((v) => !v)}
-            title="Codex, Claude Code and Antigravity each review the paper read-only; the orchestrator merges their reviews and proposes improvements.">
-            Reviewer report…
-          </button>
-          {reviewOpen && (
-            <div className="review-setup small" role="group" aria-label="Reviewer report">
-              <div className="tiny muted">Each selected tool reads the paper as a separate reviewer (read-only, in its sandbox); the orchestrator then merges the reviews. Takes several minutes.</div>
-              {sys.loading && !sys.data && <Loading text="Checking tools…" />}
-              {reviewers.map((x) => {
-                const ok = x.status === "available";
-                return (
-                  <label key={x.name} className="check-row" title={ok ? "" : `${x.status}: ${x.detail}`}>
-                    <input type="checkbox" disabled={!ok} checked={ok && reviewTools[x.name] !== false} onChange={(e) => setReviewTools((s) => ({ ...s, [x.name]: e.target.checked }))} />{" "}
-                    {x.label} {!ok && <span className="muted tiny">({x.status})</span>}
-                  </label>
-                );
-              })}
-              <label className="check-row">
-                <input type="checkbox" checked={dKorean} onChange={(e) => setDKorean(e.target.checked)} /> Also write the report in Korean (한국어)
-              </label>
-              <label className="field">
-                <span className="tiny muted">Reviewer persona (optional): who should the reviewers be?</span>
-                <input value={persona} maxLength={2000} placeholder="e.g. an ACL area chair who cares about reproducibility" onChange={(e) => setPersona(e.target.value)} />
-              </label>
-              <div className="row-actions">
-                <button type="button" className="btn btn-sm btn-primary" disabled={chosen.length === 0 || startReview.busy} onClick={() => void startReview.run()}>
-                  {startReview.busy ? "Starting…" : `Run ${chosen.length} reviewer${chosen.length === 1 ? "" : "s"}`}
-                </button>
-                <button type="button" className="btn btn-sm" onClick={() => setReviewOpen(false)}>
-                  Cancel
-                </button>
-              </div>
-              <ErrorBox error={startReview.error} />
-            </div>
-          )}
-          <button type="button" className="btn btn-sm" aria-expanded={discussOpen} disabled={send.busy || preset.busy} onClick={() => setDiscussOpen((v) => !v)}
-            title="The tools read each other's statements over several rounds; the orchestrator moderates, and the changes they all accept can become a proposal.">
-            Tool discussion…
-          </button>
-          {discussOpen && (
-            <div className="review-setup small" role="group" aria-label="Tool discussion">
-              <div className="tiny muted">The selected tools first answer on their own (read-only), then answer each other for up to the chosen number of rounds. Takes many minutes and uses each tool's quota once per round.</div>
-              {dSys.loading && !dSys.data && <Loading text="Checking tools…" />}
-              {dAll.map((x) => {
-                const ok = x.status === "available";
-                return (
-                  <label key={x.name} className="check-row" title={ok ? "" : `${x.status}: ${x.detail}`}>
-                    <input type="checkbox" disabled={!ok} checked={ok && dTools[x.name] !== false} onChange={(e) => setDTools((s) => ({ ...s, [x.name]: e.target.checked }))} />{" "}
-                    {x.label} {!ok && <span className="muted tiny">({x.status})</span>}
-                  </label>
-                );
-              })}
-              <label className="field">
-                <span className="tiny muted">Topic</span>
-                <select value={dFocus} onChange={(e) => { const f = e.target.value as "review" | "direction" | "strategy" | "experiments"; setDFocus(f); setDApply(f !== "strategy" && f !== "experiments"); }}>
-                  <option value="review">Manuscript review (find weaknesses)</option>
-                  <option value="strategy">Strategy (positioning, storyline, order of work; no edits by default)</option>
-                  <option value="experiments">Experiment design (protocols: arms, N, analysis, decision rule)</option>
-                  <option value="direction">Revision direction (what to change, in what order)</option>
-                </select>
-              </label>
-              <label className="field">
-                <span className="tiny muted">Rounds</span>
-                <select value={dRounds} onChange={(e) => setDRounds(Number(e.target.value))}>
-                  {[1, 2, 3].map((n) => (
-                    <option key={n} value={n}>
-                      {n}
-                      {n === 1 ? " (independent statements only)" : ""}
-                    </option>
+          {skillOpen && (
+            <Modal title="Roundtable" onClose={() => setSkillOpen(false)} wide>
+              <div className="skill-form">
+                <label className="field">
+                  <span className="tiny muted">
+                    {needsPrompt ? "Your prompt (what the tools should work on)" : "Your prompt (optional; every tool receives it)"}
+                  </span>
+                  <textarea rows={4} value={dAsk} maxLength={4000} autoFocus onChange={(e) => setDAsk(e.target.value)}
+                    placeholder='e.g. "Is the ablation in Section 5 enough to support claim 2? If not, what is the smallest extra experiment?"' />
+                </label>
+                <div className="tiny muted">Templates (fill the prompt):</div>
+                <div className="presets">
+                  {PRESETS.map((x) => (
+                    <button type="button" key={x.id} className="btn btn-sm" title={x.title} onClick={() => { setDAsk(x.prompt); setDFocus("custom"); setDMode("discuss"); setDApply(false); }}>
+                      {x.label}
+                    </button>
                   ))}
-                </select>
-              </label>
-              <label className="check-row">
-                <input type="checkbox" checked={dApply} onChange={(e) => setDApply(e.target.checked)} /> Turn the agreed changes into a proposal (you still review and apply it)
-              </label>
-              <label className="check-row">
-                <input type="checkbox" checked={dKorean} onChange={(e) => setDKorean(e.target.checked)} /> Also write the report in Korean (한국어)
-              </label>
-              <label className="field">
-                <span className="tiny muted">What the tools should work on (optional; they all receive it, e.g. "design the additional experiments")</span>
-                <textarea rows={3} value={dAsk} maxLength={4000} onChange={(e) => setDAsk(e.target.value)} />
-              </label>
-              <label className="field">
-                <span className="tiny muted">Role for the participants (optional; who they should act as, not the task)</span>
-                <input value={dPersona} maxLength={2000} placeholder="e.g. a JAMS referee" onChange={(e) => setDPersona(e.target.value)} />
-              </label>
-              <div className="row-actions">
-                <button type="button" className="btn btn-sm btn-primary" disabled={dChosen.length < 2 || startDiscuss.busy} onClick={() => void startDiscuss.run()}
-                  title={dChosen.length < 2 ? "Select at least two available tools" : ""}>
-                  {startDiscuss.busy ? "Starting…" : `Start with ${dChosen.length} tools`}
-                </button>
-                <button type="button" className="btn btn-sm" onClick={() => setDiscussOpen(false)}>
-                  Cancel
-                </button>
+                </div>
+                <div className="skill-grid">
+                <label className="field">
+                  <span className="tiny muted">How</span>
+                  <select value={dMode} onChange={(e) => setDMode(e.target.value as "discuss" | "reviews")}>
+                    <option value="discuss">Discussion (tools answer each other, @mentions)</option>
+                    <option value="reviews">Independent reviews (merged into one report)</option>
+                  </select>
+                </label>
+                  {dMode === "discuss" && (
+                    <>
+                    <label className="field">
+                      <span className="tiny muted">Goal</span>
+                      <select value={dFocus} onChange={(e) => { const f = e.target.value as Focus; setDFocus(f); setDApply(f === "review" || f === "direction"); }}>
+                        <option value="custom">Your prompt is the goal</option>
+                        <option value="review">Manuscript review (find weaknesses)</option>
+                        <option value="strategy">Strategy (positioning, storyline, order of work)</option>
+                        <option value="experiments">Experiment design (protocols: arms, N, analysis, decision rule)</option>
+                        <option value="direction">Revision direction (what to change, in what order)</option>
+                      </select>
+                    </label>
+                    <label className="field">
+                      <span className="tiny muted">Rounds</span>
+                      <select value={dRounds} onChange={(e) => setDRounds(Number(e.target.value))}>
+                        {[1, 2, 3].map((n) => (
+                          <option key={n} value={n}>
+                            {n}
+                            {n === 1 ? " (independent statements only)" : ""}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    </>
+                  )}
+                </div>
+                {dMode === "discuss" && (
+                  <>
+                    <label className="check-row">
+                      <input type="checkbox" checked={dApply} onChange={(e) => setDApply(e.target.checked)} /> Turn the agreed changes into a proposal (you still review and apply it)
+                    </label>
+                    <label className="check-row" title="The last selected tool must state its strongest evidence-based objection before it may accept a point, so agreement is not reached just to be agreeable.">
+                      <input type="checkbox" checked={dAdversary} onChange={(e) => setDAdversary(e.target.checked)} /> One tool plays devil's advocate (the last one selected)
+                    </label>
+                  </>
+                )}
+                <label className="field">
+                  <span className="tiny muted">Role for the participants (optional; who they should act as, not the task)</span>
+                  <input value={dPersona} maxLength={2000} placeholder="e.g. a JAMS referee" onChange={(e) => setDPersona(e.target.value)} />
+                </label>
+                <div className="tiny muted">Participants</div>
+                {dSys.loading && !dSys.data && <Loading text="Checking tools…" />}
+                {dAll.map((x) => {
+                  const ok = x.status === "available";
+                  return (
+                    <label key={x.name} className="check-row" title={ok ? "" : `${x.status}: ${x.detail}`}>
+                      <input type="checkbox" disabled={!ok} checked={ok && dTools[x.name] !== false} onChange={(e) => setDTools((v) => ({ ...v, [x.name]: e.target.checked }))} />{" "}
+                      {x.label} {!ok && <span className="muted tiny">({x.status})</span>}
+                    </label>
+                  );
+                })}
+                <label className="check-row">
+                  <input type="checkbox" checked={dKorean} onChange={(e) => setDKorean(e.target.checked)} /> Also write the report in Korean (한국어)
+                </label>
+                <div className="tiny muted">Read-only for the tools; takes many minutes and uses each tool's quota once per round.</div>
+                <div className="row-actions">
+                  <button type="button" className="btn btn-primary" disabled={dChosen.length < (dMode === "discuss" ? 2 : 1) || startSkill.busy || (needsPrompt && !dAsk.trim())} onClick={() => void startSkill.run()}
+                    title={dChosen.length < (dMode === "discuss" ? 2 : 1) ? "Select more available tools" : needsPrompt && !dAsk.trim() ? "Write a prompt first" : ""}>
+                    {startSkill.busy ? "Starting…" : `Start with ${dChosen.length} tool${dChosen.length === 1 ? "" : "s"}`}
+                  </button>
+                  <button type="button" className="btn" onClick={() => setSkillOpen(false)}>Cancel</button>
+                </div>
+                <ErrorBox error={startSkill.error} />
               </div>
-              <ErrorBox error={startDiscuss.error} />
-            </div>
+            </Modal>
           )}
-          </Fold>
-          <ErrorBox error={preset.error} />
           <fieldset className="ctx-select">
             <legend className="sr-only">Context</legend>
             <span className="tiny muted">Context</span>
@@ -395,12 +368,17 @@ export default function AiPanel(p: Props) {
               ))}
             </div>
           </fieldset>
-          <div className="tiny muted ctx-desc" aria-live="polite">
-            {effectiveScope === "selection" && sel
-              ? `${sel.path}, lines ${sel.from_line}–${sel.to_line} (${sel.text.length} chars)`
-              : effectiveScope === "file"
-                ? p.activePath
-                : "Whole project"}
+          <div className="ctx-line">
+            <div className="tiny muted ctx-desc" aria-live="polite">
+              {effectiveScope === "selection" && sel
+                ? `${sel.path}, lines ${sel.from_line}–${sel.to_line} (${sel.text.length} chars)`
+                : effectiveScope === "file"
+                  ? p.activePath
+                  : "Whole project"}
+            </div>
+            <label className="check-row tiny" title="Chat and the Roundtable also give a Korean version of the answer">
+              <input type="checkbox" checked={dKorean} onChange={(e) => setDKorean(e.target.checked)} /> 한국어 병기
+            </label>
           </div>
           <label className="sr-only" htmlFor="ai-text">
             Request
@@ -547,7 +525,7 @@ function MessageItem({
             <details key={i} className="review-one" open={i === (meta.rounds as unknown[]).length - 1}>
               <summary className="small">
                 Round {i + 1}
-                <span className="muted tiny"> · {stm.map((x) => `${x.label}${x.status !== "succeeded" ? ` (${x.status})` : x.agree === true ? " ✓" : x.agree === false ? " ✗" : ""}`).join(", ")}</span>
+                <span className="muted tiny"> · {stm.map((x) => `${x.label}${x.status !== "succeeded" ? ` (${x.status})` : x.agree === true ? (x.echo ? " ✓ (echo)" : " ✓") : x.agree === false ? " ✗" : ""}`).join(", ")}</span>
               </summary>
               {stm.map((x) => (
                 <div key={x.tool} className="small">
@@ -589,17 +567,6 @@ function SaveDiscussion({ pid, m, onSaved }: { pid: string; m: ChatMessage; onSa
       {saved && <span className="muted tiny">{saved}</span>}
       {save.error && <span className="tiny" style={{ color: "var(--danger, #b00020)" }}>{save.error}</span>}
     </div>
-  );
-}
-
-/** On a phone the presets, reviewer report and discussion fold away so the chat keeps the room. */
-function Fold({ narrow, children }: { narrow: boolean; children: ReactNode }) {
-  if (!narrow) return <>{children}</>;
-  return (
-    <details className="ai-extras">
-      <summary>Presets, reviewer report, discussion</summary>
-      {children}
-    </details>
   );
 }
 
