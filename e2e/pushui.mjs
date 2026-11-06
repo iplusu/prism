@@ -46,17 +46,17 @@ await step("the browser's own save shows no notice", async () => {
   if (n !== 0) throw new Error("recorded " + n);
 });
 await step("a script pushes 3 files: the notice names the client and the count, the file tree shows them", async () => {
-  for (const n of ["a.tex", "b.tex", "c.tex"]) { const r = await upload(n, "% " + n + "\n", { "X-Prism-Client": "hermes-test" }); if (r.status !== 200) throw new Error(JSON.stringify(r)); }
+  for (const n of ["a.tex", "b.tex", "c.tex"]) { const r = await upload(n, "% " + n + "\n", { "X-Prism-Client": "agent-test" }); if (r.status !== 200) throw new Error(JSON.stringify(r)); }
   await wait(() => document.querySelector(".push-toast.ok"), 15000);
   const t = await toast();
   await p.screenshot({ path: `${OUT}/push-ok.png` });
-  if (!/hermes-test pushed 3 files: done/.test(t)) throw new Error(t);
+  if (!/agent-test pushed 3 files: done/.test(t)) throw new Error(t);
   await wait(() => document.body.innerText.includes("pushed"), 10000);
   return t;
 });
 await step("a failed push shows a failure that stays", async () => {
   await p.evaluate(() => document.querySelector(".push-toast button")?.click());
-  const r = await upload("a.tex", "again", { "X-Prism-Client": "hermes-test" }, "false");
+  const r = await upload("a.tex", "again", { "X-Prism-Client": "agent-test" }, "false");
   if (r.status !== 409) throw new Error("expected 409, got " + r.status);
   await wait(() => document.querySelector(".push-toast.bad"), 15000);
   await new Promise((x) => setTimeout(x, 22000)); // longer than a success notice stays
