@@ -385,11 +385,14 @@ function StatusExplainer({ p, kids, pid }: { p: ProposalDetail; kids: Proposal[]
 function CandidatePdf({ p, canEdit }: { p: ProposalDetail; canEdit: boolean }) {
   const [marked, setMarked] = useState<"off" | "building" | "on">("off");
   const [markedError, setMarkedError] = useState("");
+  const [pick, setPick] = useState<string | null>(null); // one of the documents the proposal changes (default: the primary one)
+  const builds = p.candidate_builds ?? [];
+  const docParam = pick && pick !== builds[0]?.main_file ? pick : undefined;
   const showMarked = async () => {
     setMarked("building");
     setMarkedError("");
     try {
-      const r = await api.buildMarkedPdf(p.id);
+      const r = await api.buildMarkedPdf(p.id, docParam);
       if (r.ok) setMarked("on");
       else {
         setMarked("off");
@@ -400,7 +403,7 @@ function CandidatePdf({ p, canEdit }: { p: ProposalDetail; canEdit: boolean }) {
       setMarkedError(e instanceof Error ? e.message : String(e));
     }
   };
-  const b = p.candidate_build;
+  const b = builds.find((x) => x.main_file === (pick ?? "")) ?? p.candidate_build;
   if (!b) return <Empty>{p.status === "verifying" ? "The candidate is being compiled…" : "No candidate build exists for this proposal."}</Empty>;
   return (
     <div className="candidate-pdf">
@@ -408,6 +411,16 @@ function CandidatePdf({ p, canEdit }: { p: ProposalDetail; canEdit: boolean }) {
         PDF of <code>{b.main_file}</code> compiled from this proposal (build {b.status}, {fmtTime(b.finished_at || b.created_at)}
         {b.isolation ? `, isolation: ${b.isolation}` : ""}). It has not been inspected by any model — check the layout yourself.
       </p>
+      {builds.length > 1 && (
+        <label className="small" style={{ display: "block", marginBottom: 6 }}>
+          This proposal changes {builds.length} documents; each is compiled. Document shown:{" "}
+          <select value={b.main_file} onChange={(e) => { setPick(e.target.value); setMarked("off"); setMarkedError(""); }}>
+            {builds.map((x) => (
+              <option key={x.id} value={x.main_file}>{x.main_file}{x.status !== "succeeded" ? ` (${x.status})` : ""}</option>
+            ))}
+          </select>
+        </label>
+      )}
       {b.error && <div className={b.status === "blocked" ? "error-box" : "error-box soft"}>{b.error}</div>}
       {canEdit && (
         <div className="row" style={{ gap: 8, marginBottom: 8 }}>
@@ -425,9 +438,9 @@ function CandidatePdf({ p, canEdit }: { p: ProposalDetail; canEdit: boolean }) {
       {b.has_pdf || marked === "on" ? (
         <div className="candidate-pdf-view">
           {marked === "on" ? (
-            <PdfViewer key={`${p.id}-marked`} url={api.markedPdfUrl(p.id)} downloadName={`proposal-${p.id.slice(0, 8)}-marked.pdf`} />
+            <PdfViewer key={`${p.id}-${b.main_file}-marked`} url={api.markedPdfUrl(p.id, docParam)} downloadName={`proposal-${p.id.slice(0, 8)}-marked.pdf`} />
           ) : (
-            <PdfViewer key={b.id} url={api.proposalPdfUrl(p.id)} downloadName={`proposal-${p.id.slice(0, 8)}.pdf`} />
+            <PdfViewer key={b.id} url={api.proposalPdfUrl(p.id, docParam)} downloadName={`proposal-${p.id.slice(0, 8)}.pdf`} />
           )}
         </div>
       ) : (

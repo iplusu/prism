@@ -227,9 +227,11 @@ export const api = {
   // --- proposals --------------------------------------------------------
   proposals: (pid: string, which: "open" | "all") => request<Proposal[]>(`${P(pid)}/proposals?status=${which}`),
   proposal: (id: string) => request<ProposalDetail>(`/api/proposals/${enc(id)}`),
-  proposalPdfUrl: (id: string) => `/api/proposals/${enc(id)}/pdf`,
-  markedPdfUrl: (id: string) => `/api/proposals/${enc(id)}/marked-pdf`,
-  buildMarkedPdf: (id: string) => request<{ ok: boolean; error: string; cached: boolean }>(`/api/proposals/${enc(id)}/marked-pdf`, { method: "POST" }),
+  // doc: one of the documents the proposal changes (default: the primary one)
+  proposalPdfUrl: (id: string, doc?: string) => `/api/proposals/${enc(id)}/pdf${doc ? `?doc=${enc(doc)}` : ""}`,
+  markedPdfUrl: (id: string, doc?: string) => `/api/proposals/${enc(id)}/marked-pdf${doc ? `?doc=${enc(doc)}` : ""}`,
+  buildMarkedPdf: (id: string, doc?: string) =>
+    request<{ ok: boolean; error: string; cached: boolean; target?: string }>(`/api/proposals/${enc(id)}/marked-pdf${doc ? `?doc=${enc(doc)}` : ""}`, { method: "POST" }),
   applyProposal: (id: string) => request<Proposal>(`/api/proposals/${enc(id)}/apply`, { method: "POST" }),
   rejectProposal: (id: string) => request<Proposal>(`/api/proposals/${enc(id)}/reject`, { method: "POST" }),
   selectHunks: (id: string, selections: Record<string, number[]>) =>

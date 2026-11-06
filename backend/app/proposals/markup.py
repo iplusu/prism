@@ -6,6 +6,7 @@ which would read any path on the server. The marked source is compiled by the no
 
 from __future__ import annotations
 
+import hashlib
 import re
 import shutil
 import subprocess
@@ -46,17 +47,36 @@ def _inline(files: dict[str, bytes], path: str, depth: int = 0) -> str:
     return _INPUT.sub(sub, text)
 
 
-def marked_pdf_path(prop: Proposal) -> Path:
-    return service.pdir(prop.id) / "marked" / "output.pdf"
+def marked_pdf_path(prop: Proposal, doc: str | None = None) -> Path:
+    """One cache per document: the primary one keeps the old location, the others sit in a folder named after a hash of the file name."""
+    base = service.pdir(prop.id) / "marked"
+    if doc is None:
+        return base / "output.pdf"
+    return base / ("doc-" + hashlib.sha256(doc.encode()).hexdigest()[:12]) / "output.pdf"
 
 
-def build(prop: Proposal, project: Project) -> dict:
-    """Make (or reuse) the marked PDF. Returns {"ok": bool, "error": str, "cached": bool}."""
-    out = marked_pdf_path(prop)
-    marker = out.parent / "target.txt"
+def pick(prop: Proposal, project: Project, doc: str | None) -> str | None:
+    """The document asked for (None = the primary one, which uses the original cache location); ValueError if the proposal has no such document."""
+    base = service.store.files_at(prop.project_id, prop.base_revision)
+    targets = service.verify_targets(project, base, service.candidate_files(prop, base), [f["path"] for f in prop.files])
+    if doc is None or doc == targets[0]:
+        return None
+    if doc not in targets:
+        raise ValueError(f"{doc} is not one of the documents this proposal changes")
+    return doc
+
+
+def build(prop: Proposal, project: Project, doc: str | None = None) -> dict:
+    """Make (or reuse) the marked PDF of one document of the proposal (default: the primary one).
+    Returns {"ok": bool, "error": str, "cached": bool, "target": the document}."""
     base = service.store.files_at(prop.project_id, prop.base_revision)
     cand = service.candidate_files(prop, base)
-    main = service.verify_target(project, base, cand, [f["path"] for f in prop.files])  # the document this proposal changes (usually the main file)
+    targets = service.verify_targets(project, base, cand, [f["path"] for f in prop.files])
+    main = doc or targets[0]  # the document this proposal changes (usually the main file)
+    if main not in targets:
+        raise ValueError(f"{main} is not one of the documents this proposal changes")
+    out = marked_pdf_path(prop, None if main == targets[0] else main)
+    marker = out.parent / "target.txt"
     # a PDF cached before the target was recorded was made from the main file
     if out.is_file() and (marker.read_text().strip() if marker.is_file() else project.main_file) == main:
         return {"ok": True, "error": "", "cached": True, "target": main}

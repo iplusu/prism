@@ -701,11 +701,14 @@ function ProposalCard({
 function CandidatePreview({ id, onClose }: { id: string; onClose: () => void }) {
   const [marked, setMarked] = useState<"off" | "building" | "on">("off");
   const detail = useAsync(() => api.proposal(id), [id]);
-  const doc = detail.data?.candidate_build?.main_file;
+  const docs = (detail.data?.candidate_builds ?? []).map((b) => b.main_file);
+  const [pick, setPick] = useState<string | null>(null);
+  const doc = pick ?? detail.data?.candidate_build?.main_file;
+  const docParam = pick && pick !== docs[0] ? pick : undefined; // the primary document is the default
   const mark = useAction(async () => {
     setMarked("building");
     try {
-      const r = await api.buildMarkedPdf(id);
+      const r = await api.buildMarkedPdf(id, docParam);
       if (!r.ok) throw new Error(r.error || "could not mark the changes");
       setMarked("on");
     } catch (e) {
@@ -715,7 +718,18 @@ function CandidatePreview({ id, onClose }: { id: string; onClose: () => void }) 
   });
   return (
     <Modal title="Preview: the PDF with this proposal applied (nothing is applied yet)" onClose={onClose} wide>
-      {doc && <div className="tiny muted" style={{ marginBottom: 6 }}>Document shown: <code>{doc}</code></div>}
+      {docs.length > 1 ? (
+        <label className="tiny muted" style={{ display: "block", marginBottom: 6 }}>
+          This proposal changes {docs.length} documents. Document shown:{" "}
+          <select value={doc ?? ""} onChange={(e) => { setPick(e.target.value); setMarked("off"); }}>
+            {detail.data?.candidate_builds?.map((b) => (
+              <option key={b.id} value={b.main_file}>{b.main_file}{b.status !== "succeeded" ? ` (${b.status})` : ""}</option>
+            ))}
+          </select>
+        </label>
+      ) : (
+        doc && <div className="tiny muted" style={{ marginBottom: 6 }}>Document shown: <code>{doc}</code></div>
+      )}
       <div className="row-actions" style={{ marginBottom: 8 }}>
         {marked === "on" ? (
           <button className="btn btn-xs" onClick={() => setMarked("off")}>Show the plain PDF</button>
@@ -728,9 +742,9 @@ function CandidatePreview({ id, onClose }: { id: string; onClose: () => void }) 
       <ErrorBox error={mark.error} />
       <div className="candidate-pdf-view">
         {marked === "on" ? (
-          <PdfViewer key={`${id}-marked`} url={api.markedPdfUrl(id)} downloadName={`proposal-${id.slice(0, 8)}-marked.pdf`} />
+          <PdfViewer key={`${id}-${doc}-marked`} url={api.markedPdfUrl(id, docParam)} downloadName={`proposal-${id.slice(0, 8)}-marked.pdf`} />
         ) : (
-          <PdfViewer key={id} url={api.proposalPdfUrl(id)} downloadName={`proposal-${id.slice(0, 8)}.pdf`} />
+          <PdfViewer key={`${id}-${doc}`} url={api.proposalPdfUrl(id, docParam)} downloadName={`proposal-${id.slice(0, 8)}.pdf`} />
         )}
       </div>
     </Modal>

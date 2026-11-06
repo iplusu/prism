@@ -124,19 +124,29 @@ def _closure(files: dict[str, bytes], root: str) -> set[str]:
     return seen
 
 
-def verify_target(project: Project, base: dict[str, bytes], cand: dict[str, bytes], paths: list[str]) -> str:
-    """The document a proposal is compiled and previewed as. The project's main file, unless the proposal only changes another
-    standalone document of the project (its own \\documentclass, not pulled into the main file, e.g. a CV next to the proposal):
-    compiling the main file for such a change would show the wrong PDF and never test the changed document."""
+MAX_DOCUMENTS = 4  # compiled per proposal; a proposal that changes more standalone documents has the rest left unchecked
+
+
+def verify_targets(project: Project, base: dict[str, bytes], cand: dict[str, bytes], paths: list[str]) -> list[str]:
+    """The documents a proposal is compiled, previewed and marked as: the project's main file when the proposal reaches it
+    (a file it includes, or a bibliography, style or figure), plus every other standalone document the proposal changes (its own
+    \\documentclass, not pulled into the main file, e.g. a CV next to the proposal). The first one is the primary document
+    (the page limit and the other checks look at it). Compiling only the main file for a change to the CV would show the wrong
+    PDF and never test the changed document."""
     main = project.main_file
-    changed = set(paths)
     if main not in cand:
-        return main
+        return [main]
+    changed = set(paths)
     affected = _closure(cand, main) | (_closure(base, main) if main in base else set())
-    if changed & affected or any(not p.endswith(".tex") for p in changed):  # shared inputs (bibliography, styles, figures) belong to the main file
-        return main
-    roots = sorted(p for p in changed if p.endswith(".tex") and p in cand and _DOCCLASS.search(cand[p]))
-    return roots[0] if roots else main
+    out: list[str] = []
+    if changed & affected or any(not p.endswith(".tex") for p in changed):  # shared inputs belong to the main file
+        out.append(main)
+    out += sorted(p for p in changed if p.endswith(".tex") and p != main and p not in affected and p in cand and _DOCCLASS.search(cand[p]))
+    return (out or [main])[:MAX_DOCUMENTS]
+
+
+def verify_target(project: Project, base: dict[str, bytes], cand: dict[str, bytes], paths: list[str]) -> str:
+    return verify_targets(project, base, cand, paths)[0]
 
 
 def _base_build(db: Session, project: Project, revision: str, files: dict[str, bytes], target: str | None = None) -> Build:
@@ -154,26 +164,46 @@ def _base_build(db: Session, project: Project, revision: str, files: dict[str, b
     return run_build(db, b, files=files)
 
 
+def candidate_builds(db: Session, prop: Proposal) -> list[Build]:
+    """The candidate builds of the latest verification, one per document, the primary one first."""
+    primary = db.get(Build, prop.candidate_build_id) if prop.candidate_build_id else None
+    if primary is None:
+        return []
+    rows = db.execute(select(Build).where(Build.proposal_id == prop.id, Build.kind == "proposal", Build.source_hash == primary.source_hash)
+                      .order_by(Build.created_at, Build.id)).scalars().all()
+    latest = {x.main_file: x for x in rows}  # a re-run of the same document replaces the earlier build
+    return [primary] + [x for f, x in latest.items() if f != primary.main_file]
+
+
 def verify(db: Session, prop: Proposal, should_cancel=lambda: False) -> Proposal:
     """Compile the candidate, compare it with the base, run the checks."""
     project = db.get(Project, prop.project_id)
     assert project is not None
     base = store.files_at(project.id, prop.base_revision)
     cand = candidate_files(prop, base)
-    target = verify_target(project, base, cand, [f["path"] for f in prop.files])
-    base_build = _base_build(db, project, prop.base_revision, base, target)
-    b = Build(project_id=project.id, kind="proposal", proposal_id=prop.id, revision=prop.base_revision,
-              engine=project.engine, main_file=target, source_hash=store.tree_hash(cand))
-    db.add(b)
-    db.commit()
-    run_build(db, b, files=cand, should_cancel=should_cancel)
+    targets = verify_targets(project, base, cand, [f["path"] for f in prop.files])
+    base_builds, builds = [], []
+    for target in targets:  # normally one; one per changed standalone document otherwise (the first is the primary)
+        base_builds.append(_base_build(db, project, prop.base_revision, base, target))
+        nb = Build(project_id=project.id, kind="proposal", proposal_id=prop.id, revision=prop.base_revision,
+                   engine=project.engine, main_file=target, source_hash=store.tree_hash(cand))
+        db.add(nb)
+        db.commit()
+        run_build(db, nb, files=cand, should_cancel=should_cancel)
+        builds.append(nb)
+    base_build, b = base_builds[0], builds[0]
     prop.candidate_build_id = b.id
     rep = analysis.analyze(base, cand, [f["path"] for f in prop.files])
     wb = analysis.warning_counts(base_build.diagnostics)
     wc = analysis.warning_counts(b.diagnostics)
     delta = {k: wc[k] - wb[k] for k in wc}
-    build_ok = None if b.status in ("blocked", "cancelled") else b.status == "succeeded"
-    base_ok = None if base_build.status in ("blocked", "cancelled") else base_build.status == "succeeded"
+    def _ok(items: list[Build]) -> bool | None:
+        if any(x.status in ("blocked", "cancelled") for x in items):
+            return None
+        return all(x.status == "succeeded" for x in items)
+
+    build_ok = _ok(builds)  # every compiled document must build, not only the primary one
+    base_ok = _ok(base_builds)
     checks = analysis.evaluate_checks(prop.report.get("checks_requested", []), rep, build_ok, base_ok,
                                       prop.report.get("scope_ok", True), delta)
     report = dict(prop.report)
@@ -182,7 +212,9 @@ def verify(db: Session, prop: Proposal, should_cancel=lambda: False) -> Proposal
         "build": {"candidate": b.status, "candidate_isolation": b.isolation, "base": base_build.status,
                   "base_build_id": base_build.id, "pages_base": base_build.pages, "pages_candidate": b.pages, "last_page_lines_base": (base_build.page_lines or [None])[-1],
                   "last_page_lines_candidate": (b.page_lines or [None])[-1], "warnings_base": wb, "warnings_candidate": wc,
-                  "blocked_reason": b.error if b.status == "blocked" else ""},
+                  "blocked_reason": b.error if b.status == "blocked" else "",
+                  "documents": [{"file": x.main_file, "build_id": x.id, "status": x.status, "pages": x.pages, "base_status": ob.status}
+                                for x, ob in zip(builds, base_builds)]},
         "limitations": [
             "A successful compilation does not mean the content or the layout is correct.",
             "No model inspected the rendered PDF; review the candidate PDF yourself.",
@@ -450,6 +482,8 @@ def proposal_json(db: Session, prop: Proposal, detail: bool = False) -> dict:
         d["report"] = prop.report
         d["conflicts"] = prop.conflicts
         d["candidate_build"] = build_json(db.get(Build, prop.candidate_build_id)) if prop.candidate_build_id else None
+        # one build per document the proposal changes (the candidate build above is the primary one)
+        d["candidate_builds"] = [build_json(x) for x in candidate_builds(db, prop)]
         fd = []
         for f in prop.files:
             item = dict(f)

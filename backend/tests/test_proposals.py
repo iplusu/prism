@@ -355,3 +355,65 @@ def test_the_marked_pdf_follows_the_changed_document_and_an_old_cache_is_not_reu
         text = subprocess.run(["pdftotext", f.name, "-"], capture_output=True).stdout.decode()
     assert "PREPARATION" in text and "ZEBRA-CV" in text and "step-size" not in text.lower()
     assert alice.post(f"/api/proposals/{prop_id}/marked-pdf").json()["cached"] is True
+
+
+LETTER = "\\documentclass{article}\n\\begin{document}\nCover letter of QUOKKA-LETTER\n\\end{document}\n"
+
+
+def _pdf_text(c, url):
+    import subprocess
+    import tempfile
+    r = c.get(url)
+    assert r.status_code == 200 and r.content[:5] == b"%PDF-", (url, r.status_code)
+    with tempfile.NamedTemporaryFile(suffix=".pdf") as f:
+        f.write(r.content); f.flush()
+        return subprocess.run(["pdftotext", f.name, "-"], capture_output=True).stdout.decode()
+
+
+def test_a_proposal_that_changes_several_documents_gets_one_pdf_for_each(alice):
+    pid = _with_cv(alice)
+    assert alice.post(f"/api/projects/{pid}/files", json={"path": "letter.tex", "text": LETTER}).status_code == 200
+    conclusion = read_text(alice, pid, "sections/conclusion.tex")["text"]
+    prop_id = _propose(pid, {"cv.tex": CV.replace("ongoing.", "in preparation."), "letter.tex": LETTER.replace("Cover letter", "Revised cover letter"),
+                             "sections/conclusion.tex": conclusion.replace("future work", "later work")})
+    drain()
+    d = _get(alice, prop_id)
+    assert [b["main_file"] for b in d["candidate_builds"]] == ["main.tex", "cv.tex", "letter.tex"], d["candidate_builds"]  # main first: the primary
+    assert all(b["status"] == "succeeded" for b in d["candidate_builds"]) and d["candidate_build"]["main_file"] == "main.tex"
+    assert [x["file"] for x in d["report"]["build"]["documents"]] == ["main.tex", "cv.tex", "letter.tex"]
+    assert "step-size" in _pdf_text(alice, f"/api/proposals/{prop_id}/pdf").lower()  # no ?doc= : the primary document
+    assert "QUOKKA-LETTER" in _pdf_text(alice, f"/api/proposals/{prop_id}/pdf?doc=letter.tex")
+    cv = _pdf_text(alice, f"/api/proposals/{prop_id}/pdf?doc=cv.tex")
+    assert "ZEBRA-CV" in cv and "QUOKKA" not in cv
+    assert alice.get(f"/api/proposals/{prop_id}/pdf?doc=nothing.tex").status_code == 404
+
+
+def test_a_broken_second_document_fails_the_compile_check_of_the_proposal(alice):
+    pid = _with_cv(alice)
+    assert alice.post(f"/api/projects/{pid}/files", json={"path": "letter.tex", "text": LETTER}).status_code == 200
+    prop_id = _propose(pid, {"cv.tex": CV.replace("ongoing.", "x."),
+                             "letter.tex": LETTER.replace("\\end{document}", "\\undefinedcommandxyz\n\\end{document}")})
+    drain()
+    d = _get(alice, prop_id)
+    assert d["candidate_builds"][0]["main_file"] == "cv.tex" and d["candidate_builds"][0]["status"] == "succeeded"
+    assert d["candidate_builds"][1]["main_file"] == "letter.tex" and d["candidate_builds"][1]["status"] == "failed"
+    assert any(c["check"] == "compiles" and c["status"] == "failed" for c in d["report"]["checks"]), d["report"]["checks"]
+
+
+def test_the_marked_pdf_can_be_built_for_each_document(alice):
+    import shutil
+    from app.compile.latex import tex_bin_dir
+    d = tex_bin_dir()
+    if not d or not shutil.which("latexdiff", path=d):
+        pytest.skip("latexdiff is not installed")
+    pid = _with_cv(alice)
+    assert alice.post(f"/api/projects/{pid}/files", json={"path": "letter.tex", "text": LETTER}).status_code == 200
+    prop_id = _propose(pid, {"cv.tex": CV.replace("ongoing.", "in PREPARATION."), "letter.tex": LETTER.replace("Cover letter", "REVISED cover letter")})
+    drain()
+    r = alice.post(f"/api/proposals/{prop_id}/marked-pdf?doc=letter.tex")
+    assert r.status_code == 200 and r.json()["ok"] and r.json()["target"] == "letter.tex", r.json()
+    r2 = alice.post(f"/api/proposals/{prop_id}/marked-pdf")  # the primary document: cv.tex
+    assert r2.json()["ok"] and r2.json()["target"] == "cv.tex"
+    assert "REVISED" in _pdf_text(alice, f"/api/proposals/{prop_id}/marked-pdf?doc=letter.tex")
+    assert "PREPARATION" in _pdf_text(alice, f"/api/proposals/{prop_id}/marked-pdf")
+    assert alice.post(f"/api/proposals/{prop_id}/marked-pdf?doc=main.tex").status_code == 404  # not a document this proposal changes

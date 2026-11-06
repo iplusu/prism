@@ -56,29 +56,37 @@ def get_proposal(prop_id: str, user: User = Depends(current_user), db: Session =
 
 
 @router.get("/proposals/{prop_id}/pdf")
-def proposal_pdf(prop_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
+def proposal_pdf(prop_id: str, doc: str | None = None, user: User = Depends(current_user), db: Session = Depends(get_db)):
     p = _prop(db, prop_id, user)
-    b = db.get(Build, p.candidate_build_id) if p.candidate_build_id else None
+    builds = service.candidate_builds(db, p)  # one per changed document, the primary first; ?doc= picks another one
+    b = next((x for x in builds if doc is None or x.main_file == doc), None)
     if b is None or not b.has_pdf or not pdf_path(b.id).exists():
         raise HTTPException(404, "no candidate PDF")
     return FileResponse(pdf_path(b.id), media_type="application/pdf")
 
 
 @router.post("/proposals/{prop_id}/marked-pdf")
-def build_marked_pdf(prop_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
+def build_marked_pdf(prop_id: str, doc: str | None = None, user: User = Depends(current_user), db: Session = Depends(get_db)):
     """Compile the proposal with its changes marked (latexdiff). Takes seconds to a minute; the result is cached."""
     p = _prop(db, prop_id, user, "editor")
     if p.status == "verifying":
         raise HTTPException(409, "the proposal is still being verified")
     project = db.get(Project, p.project_id)
     with markup.lock_for(p.id):
-        return markup.build(p, project)
+        try:
+            return markup.build(p, project, doc)
+        except ValueError as e:
+            raise HTTPException(404, str(e)) from e
 
 
 @router.get("/proposals/{prop_id}/marked-pdf")
-def marked_pdf(prop_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
+def marked_pdf(prop_id: str, doc: str | None = None, user: User = Depends(current_user), db: Session = Depends(get_db)):
     p = _prop(db, prop_id, user)
-    path = markup.marked_pdf_path(p)
+    project = db.get(Project, p.project_id)
+    try:
+        path = markup.marked_pdf_path(p, markup.pick(p, project, doc))
+    except ValueError as e:
+        raise HTTPException(404, str(e)) from e
     if not path.is_file():
         raise HTTPException(404, "no marked PDF yet; build it first")
     return FileResponse(path, media_type="application/pdf")

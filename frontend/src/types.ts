@@ -386,6 +386,7 @@ export interface ProposalDetail extends Proposal {
   report: ProposalReport;
   conflicts: Conflict[];
   candidate_build: Build | null;
+  candidate_builds?: Build[]; // one per document the proposal changes, the primary first
   file_diffs: (ProposalFile & { hunks?: Hunk[] })[];
 }
 
