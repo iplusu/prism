@@ -700,6 +700,8 @@ function ProposalCard({
 /** The PDF compiled from a proposal, shown over the chat before anything is applied; the changes can be marked (latexdiff). */
 function CandidatePreview({ id, onClose }: { id: string; onClose: () => void }) {
   const [marked, setMarked] = useState<"off" | "building" | "on">("off");
+  const detail = useAsync(() => api.proposal(id), [id]);
+  const doc = detail.data?.candidate_build?.main_file;
   const mark = useAction(async () => {
     setMarked("building");
     try {
@@ -713,6 +715,7 @@ function CandidatePreview({ id, onClose }: { id: string; onClose: () => void }) 
   });
   return (
     <Modal title="Preview: the PDF with this proposal applied (nothing is applied yet)" onClose={onClose} wide>
+      {doc && <div className="tiny muted" style={{ marginBottom: 6 }}>Document shown: <code>{doc}</code></div>}
       <div className="row-actions" style={{ marginBottom: 8 }}>
         {marked === "on" ? (
           <button className="btn btn-xs" onClick={() => setMarked("off")}>Show the plain PDF</button>

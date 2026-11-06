@@ -18,6 +18,7 @@ and the candidate content of each changed file. Applying it:
 
 from __future__ import annotations
 
+import re
 import shutil
 from pathlib import Path
 
@@ -104,14 +105,49 @@ def candidate_files(prop: Proposal, base_files: dict[str, bytes] | None = None) 
     return files
 
 
-def _base_build(db: Session, project: Project, revision: str, files: dict[str, bytes]) -> Build:
+_INPUT = re.compile(r"\\(?:input|include)\{([^}]+)\}")
+_DOCCLASS = re.compile(rb"^[^%\n]*\\documentclass", re.M)
+
+
+def _closure(files: dict[str, bytes], root: str) -> set[str]:
+    """The root and the project files it pulls in with \\input / \\include, transitively."""
+    seen, stack = {root}, [root]
+    while stack:
+        cur = stack.pop()
+        for m in _INPUT.finditer(files.get(cur, b"").decode("utf-8", errors="replace")):
+            name = m.group(1).strip()
+            for cand in (name, name + ".tex"):
+                if cand in files and cand not in seen:
+                    seen.add(cand)
+                    stack.append(cand)
+                    break
+    return seen
+
+
+def verify_target(project: Project, base: dict[str, bytes], cand: dict[str, bytes], paths: list[str]) -> str:
+    """The document a proposal is compiled and previewed as. The project's main file, unless the proposal only changes another
+    standalone document of the project (its own \\documentclass, not pulled into the main file, e.g. a CV next to the proposal):
+    compiling the main file for such a change would show the wrong PDF and never test the changed document."""
+    main = project.main_file
+    changed = set(paths)
+    if main not in cand:
+        return main
+    affected = _closure(cand, main) | (_closure(base, main) if main in base else set())
+    if changed & affected or any(not p.endswith(".tex") for p in changed):  # shared inputs (bibliography, styles, figures) belong to the main file
+        return main
+    roots = sorted(p for p in changed if p.endswith(".tex") and p in cand and _DOCCLASS.search(cand[p]))
+    return roots[0] if roots else main
+
+
+def _base_build(db: Session, project: Project, revision: str, files: dict[str, bytes], target: str | None = None) -> Build:
+    target = target or project.main_file
     b = db.execute(select(Build).where(Build.project_id == project.id, Build.revision == revision,
                                        Build.status.in_(("succeeded", "failed")), Build.engine == project.engine,
-                                       Build.main_file == project.main_file)
+                                       Build.main_file == target)
                    .order_by(Build.created_at.desc()).limit(1)).scalar_one_or_none()
     if b is not None:
         return b
-    b = Build(project_id=project.id, kind="base", revision=revision, engine=project.engine, main_file=project.main_file,
+    b = Build(project_id=project.id, kind="base", revision=revision, engine=project.engine, main_file=target,
               source_hash=store.tree_hash(files))
     db.add(b)
     db.commit()
@@ -124,9 +160,10 @@ def verify(db: Session, prop: Proposal, should_cancel=lambda: False) -> Proposal
     assert project is not None
     base = store.files_at(project.id, prop.base_revision)
     cand = candidate_files(prop, base)
-    base_build = _base_build(db, project, prop.base_revision, base)
+    target = verify_target(project, base, cand, [f["path"] for f in prop.files])
+    base_build = _base_build(db, project, prop.base_revision, base, target)
     b = Build(project_id=project.id, kind="proposal", proposal_id=prop.id, revision=prop.base_revision,
-              engine=project.engine, main_file=project.main_file, source_hash=store.tree_hash(cand))
+              engine=project.engine, main_file=target, source_hash=store.tree_hash(cand))
     db.add(b)
     db.commit()
     run_build(db, b, files=cand, should_cancel=should_cancel)

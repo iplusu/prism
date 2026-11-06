@@ -405,7 +405,7 @@ function CandidatePdf({ p, canEdit }: { p: ProposalDetail; canEdit: boolean }) {
   return (
     <div className="candidate-pdf">
       <p className="muted small">
-        PDF compiled from this proposal (build {b.status}, {fmtTime(b.finished_at || b.created_at)}
+        PDF of <code>{b.main_file}</code> compiled from this proposal (build {b.status}, {fmtTime(b.finished_at || b.created_at)}
         {b.isolation ? `, isolation: ${b.isolation}` : ""}). It has not been inspected by any model — check the layout yourself.
       </p>
       {b.error && <div className={b.status === "blocked" ? "error-box" : "error-box soft"}>{b.error}</div>}

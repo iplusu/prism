@@ -53,15 +53,17 @@ def marked_pdf_path(prop: Proposal) -> Path:
 def build(prop: Proposal, project: Project) -> dict:
     """Make (or reuse) the marked PDF. Returns {"ok": bool, "error": str, "cached": bool}."""
     out = marked_pdf_path(prop)
-    if out.is_file():
-        return {"ok": True, "error": "", "cached": True}
+    marker = out.parent / "target.txt"
+    base = service.store.files_at(prop.project_id, prop.base_revision)
+    cand = service.candidate_files(prop, base)
+    main = service.verify_target(project, base, cand, [f["path"] for f in prop.files])  # the document this proposal changes (usually the main file)
+    # a PDF cached before the target was recorded was made from the main file
+    if out.is_file() and (marker.read_text().strip() if marker.is_file() else project.main_file) == main:
+        return {"ok": True, "error": "", "cached": True, "target": main}
     d = tex_bin_dir()
     exe = Path(d) / "latexdiff" if d else None
     if exe is None or not exe.exists():
         return {"ok": False, "error": "latexdiff is not installed on this server (tlmgr install latexdiff)", "cached": False}
-    main = project.main_file
-    base = service.store.files_at(prop.project_id, prop.base_revision)
-    cand = service.candidate_files(prop, base)
     if main not in base or main not in cand:
         return {"ok": False, "error": f"main file {main!r} is missing in the base or the candidate", "cached": False}
     with tempfile.TemporaryDirectory(prefix="prism-latexdiff-") as tmp:
@@ -87,6 +89,7 @@ def build(prop: Proposal, project: Project) -> dict:
             return {"ok": False, "error": f"the marked source did not compile ({res.status}): {tail}", "cached": False}
         out.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(res.pdf_path, out)
+        marker.write_text(main)
     finally:
         shutil.rmtree(bdir, ignore_errors=True)
-    return {"ok": True, "error": "", "cached": False}
+    return {"ok": True, "error": "", "cached": False, "target": main}

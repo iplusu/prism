@@ -276,3 +276,82 @@ def test_redo_on_the_current_manuscript_queues_the_same_request(alice):
     assert "subject of our next paper" in live
     alice.post(f"/api/tasks/{t['id']}/cancel")
     drain()
+
+
+CV = "\\documentclass{article}\n\\begin{document}\nCurriculum vitae of ZEBRA-CV\n\nApplication of Large Language Models, ongoing.\n\\end{document}\n"
+
+
+def _with_cv(alice):
+    pid = new_sample_project(alice)["id"]
+    assert alice.post(f"/api/projects/{pid}/files", json={"path": "cv.tex", "text": CV}).status_code == 200
+    return pid
+
+
+def _candidate_build(c, prop_id):
+    return _get(c, prop_id)["candidate_build"]
+
+
+def test_a_change_to_a_separate_document_is_compiled_and_previewed_as_that_document(alice):
+    import subprocess
+    import tempfile
+    pid = _with_cv(alice)
+    prop_id = _propose(pid, {"cv.tex": CV.replace("ongoing.", "in preparation.")})
+    drain()
+    b = _candidate_build(alice, prop_id)
+    assert b["main_file"] == "cv.tex" and b["status"] == "succeeded", b  # not the project's main file
+    pdf = alice.get(f"/api/proposals/{prop_id}/pdf")
+    assert pdf.status_code == 200
+    with tempfile.NamedTemporaryFile(suffix=".pdf") as f:
+        f.write(pdf.content); f.flush()
+        text = subprocess.run(["pdftotext", f.name, "-"], capture_output=True).stdout.decode()
+    assert "ZEBRA-CV" in text and "in preparation" in text and "step-size" not in text.lower()
+
+
+def test_a_broken_separate_document_is_caught_by_the_verification(alice):
+    pid = _with_cv(alice)
+    prop_id = _propose(pid, {"cv.tex": CV.replace("\\end{document}", "\\undefinedcommandxyz\n\\end{document}")})
+    drain()
+    b = _candidate_build(alice, prop_id)
+    assert b["main_file"] == "cv.tex" and b["status"] == "failed", b  # before, the main file was compiled and the break went unnoticed
+
+
+def test_changes_that_reach_the_main_file_are_still_compiled_as_the_main_file(alice):
+    pid = _with_cv(alice)
+    conclusion = read_text(alice, pid, "sections/conclusion.tex")["text"]
+    a = _propose(pid, {"sections/conclusion.tex": conclusion.replace("future work", "ongoing work")})
+    b = _propose(pid, {"cv.tex": CV.replace("ongoing.", "x."), "sections/conclusion.tex": conclusion.replace("future work", "later work")})
+    c = _propose(pid, {"references.bib": read_text(alice, pid, "references.bib")["text"] + "\n"})
+    drain()
+    for prop_id in (a, b, c):
+        assert _candidate_build(alice, prop_id)["main_file"] == "main.tex", prop_id
+
+
+def test_the_marked_pdf_follows_the_changed_document_and_an_old_cache_is_not_reused(alice):
+    import shutil
+    import subprocess
+    import tempfile
+    from app.compile.latex import tex_bin_dir
+    d = tex_bin_dir()
+    if not d or not shutil.which("latexdiff", path=d):
+        pytest.skip("latexdiff is not installed")
+    pid = _with_cv(alice)
+    prop_id = _propose(pid, {"cv.tex": CV.replace("ongoing.", "in PREPARATION.")})
+    drain()
+    # a marked PDF cached before the target was recorded is a PDF of the main file: it must not be served for this proposal
+    from app.proposals import markup
+    from app.models import Proposal
+    db = SessionLocal()
+    try:
+        old = markup.marked_pdf_path(db.get(Proposal, prop_id))
+    finally:
+        db.close()
+    old.parent.mkdir(parents=True, exist_ok=True)
+    old.write_bytes(b"%PDF-1.4 stale main-file pdf")
+    r = alice.post(f"/api/proposals/{prop_id}/marked-pdf")
+    assert r.status_code == 200 and r.json()["ok"] and r.json()["cached"] is False and r.json()["target"] == "cv.tex", r.json()
+    pdf = alice.get(f"/api/proposals/{prop_id}/marked-pdf").content
+    with tempfile.NamedTemporaryFile(suffix=".pdf") as f:
+        f.write(pdf); f.flush()
+        text = subprocess.run(["pdftotext", f.name, "-"], capture_output=True).stdout.decode()
+    assert "PREPARATION" in text and "ZEBRA-CV" in text and "step-size" not in text.lower()
+    assert alice.post(f"/api/proposals/{prop_id}/marked-pdf").json()["cached"] is True
