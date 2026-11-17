@@ -184,9 +184,20 @@ def build_context(files: dict[str, bytes], *, request: str, spec: dict, main_fil
     path = spec.get("path")
     if scope == "selection" and spec.get("selection"):
         sel = spec["selection"]
+        add(f"## Scope of the request\nThe user selected the text below. Their request refers to THIS text, and any edit must be made "
+            f"only there ({path} lines {sel.get('from_line')}-{sel.get('to_line')}); do not change other parts of the document "
+            f"(for example the paper title) unless the request says so.\n", required=True)
         add(f"## Selected text ({path} lines {sel.get('from_line')}-{sel.get('to_line')})\n```latex\n{sel.get('text', '')[:budget // 2]}\n```\n",
             tag=f"selection:{path}", required=True)
-    if scope in ("selection", "file") and path and path in files and is_text(path, files[path]):
+    if scope == "selection" and spec.get("selection") and path and path in files and is_text(path, files[path]):
+        # only the neighbourhood of the selection, not the whole file (a long main.tex would fill the budget)
+        sel = spec["selection"]
+        lines = files[path].decode("utf-8", "replace").splitlines()
+        lo = max(1, int(sel.get("from_line") or 1) - 40)
+        hi = min(len(lines), int(sel.get("to_line") or 1) + 40)
+        add(f"## Surrounding text: {path} lines {lo}-{hi} (line-numbered; the selection is inside)\n```\n"
+            f"{_numbered(chr(10).join(lines[lo - 1:hi]), lo)}\n```\n", tag=path)
+    elif scope in ("selection", "file") and path and path in files and is_text(path, files[path]):
         add(f"## Current file: {path} (line-numbered)\n```\n{_numbered(files[path].decode('utf-8'))}\n```\n", tag=path,
             required=scope == "file")
 

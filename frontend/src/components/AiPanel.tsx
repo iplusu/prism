@@ -120,6 +120,13 @@ export default function AiPanel(p: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [p.ask?.nonce]);
 
+  // Selecting text in the editor switches the context to it (the default "Project" would otherwise be sent silently).
+  const hadSelection = useRef(false);
+  useEffect(() => {
+    if (p.selection && !hadSelection.current) setScope("selection");
+    hadSelection.current = !!p.selection;
+  }, [p.selection]);
+
   const sel = pinned ?? p.selection;
   const effectiveScope: Scope = scope === "selection" && !sel ? "project" : scope === "file" && !p.activePath ? "project" : scope;
 
