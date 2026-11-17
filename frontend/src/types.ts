@@ -121,6 +121,14 @@ export interface OutlineSection {
   title: string;
 }
 
+export interface ProjectStats {
+  main_file: string;
+  stats: {
+    total: number; text: number; headers: number; outside: number;
+    header_count: number; float_count: number; math_inline: number; math_display: number;
+  } | null;
+}
+
 export interface Outline {
   sections: OutlineSection[];
   labels: { label: string; file: string; line: number }[];

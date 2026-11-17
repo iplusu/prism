@@ -61,3 +61,46 @@ def note(counts: dict | None, target: int | None) -> str:
         return s + "."
     gap = counts["total"] - target
     return s + (f". Requested limit {target} words: " + (f"over by about {gap} words." if gap > 0 else f"met, about {-gap} words of room."))
+
+
+_DETAIL = {
+    "text": r"Words in text:\s*(\d+)",
+    "headers": r"Words in headers:\s*(\d+)",
+    "outside": r"Words outside text[^:]*:\s*(\d+)",
+    "header_count": r"Number of headers:\s*(\d+)",
+    "float_count": r"Number of floats[^:]*:\s*(\d+)",
+    "math_inline": r"Number of math inlines:\s*(\d+)",
+    "math_display": r"Number of math displayed:\s*(\d+)",
+}
+
+
+def project_stats(files: dict[str, bytes], main_file: str) -> dict | None:
+    """Word statistics for the project's info panel (main file plus everything it \\inputs), or None if texcount is unavailable.
+    total = text + headers + outside text + every math formula (each counted as one word)."""
+    d = tex_bin_dir()
+    exe = Path(d) / "texcount" if d else None
+    if exe is None or not exe.exists() or main_file not in files:
+        return None
+    with tempfile.TemporaryDirectory(prefix="prism-words-") as tmp:
+        root = Path(tmp)
+        for rel, data in files.items():
+            if not rel.endswith((".tex", ".sty", ".cls")):
+                continue
+            p = (root / rel).resolve()
+            if root.resolve() not in p.parents:
+                continue
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_bytes(data)
+        try:
+            out = subprocess.run([str(exe), "-merge", "-inc", "-total", main_file], cwd=root, capture_output=True,
+                                 timeout=30, env={"PATH": f"{d}:/usr/bin:/bin", "HOME": tmp})
+        except (OSError, subprocess.TimeoutExpired):
+            return None
+    text = out.stdout.decode("utf-8", "replace")
+    text = text.split("Total", 1)[1] if "\nTotal" in text or text.startswith("Total") else text
+    vals = {}
+    for k, rx in _DETAIL.items():
+        m = re.search(rx, text)
+        vals[k] = int(m.group(1)) if m else 0
+    vals["total"] = vals["text"] + vals["headers"] + vals["outside"] + vals["math_inline"] + vals["math_display"]
+    return vals

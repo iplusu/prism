@@ -11,6 +11,7 @@ import type {
   FileEntry,
   LlmTestReport,
   Outline,
+  ProjectStats,
   PaperHit,
   PdfMark,
   Project,
@@ -176,6 +177,7 @@ export const api = {
     request<{ path: string }>(`${P(pid)}/files/rename`, { method: "POST", body: { src, dst } }),
   deleteFile: (pid: string, path: string) =>
     request<{ ok: boolean }>(`${P(pid)}/files?path=${enc(path)}`, { method: "DELETE" }),
+  stats: (pid: string) => request<ProjectStats>(`${P(pid)}/stats`),
   outline: (pid: string) => request<Outline>(`${P(pid)}/outline`),
   search: (pid: string, q: string, regex: boolean, caseSensitive: boolean) =>
     request<{ results: SearchResult[]; truncated: boolean }>(

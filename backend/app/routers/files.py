@@ -197,6 +197,14 @@ def project_outline(pid: str, user: User = Depends(current_user), db: Session = 
     return {"sections": outline(files), "labels": labels(files), "bib": bib_entries(files)}
 
 
+@router.get("/stats")
+def project_stats(pid: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Word and structure counts for the project info panel (texcount); stats is null if texcount is unavailable."""
+    project = get_project_for(db, pid, user)
+    from ..agent.words import project_stats as _stats
+    return {"main_file": project.main_file, "stats": _stats(_live(pid), project.main_file)}
+
+
 @router.get("/search")
 def search(pid: str, q: str, regex: bool = False, case: bool = False, user: User = Depends(current_user),
            db: Session = Depends(get_db)):

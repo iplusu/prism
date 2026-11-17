@@ -2,13 +2,14 @@ import type { ReactNode } from "react";
 import type { FileEntry } from "../types";
 import CheckPanel from "./CheckPanel";
 import FileTree from "./FileTree";
+import InfoPanel from "./InfoPanel";
 import HistoryPanel from "./HistoryPanel";
-import { IconBook, IconFile, IconHistory, IconList, IconReview, IconSearch } from "./Icons";
+import { IconBook, IconFile, IconHistory, IconInfo, IconList, IconReview, IconSearch } from "./Icons";
 import OutlinePanel from "./OutlinePanel";
 import ReferencesPanel from "./ReferencesPanel";
 import SearchPanel from "./SearchPanel";
 
-export type SideTab = "files" | "outline" | "search" | "refs" | "check" | "history";
+export type SideTab = "files" | "outline" | "search" | "refs" | "check" | "history" | "info";
 
 interface Props {
   pid: string;
@@ -34,6 +35,7 @@ const TABS: { id: SideTab; label: string; icon: ReactNode }[] = [
   { id: "refs", label: "Refs", icon: <IconBook /> },
   { id: "check", label: "Check", icon: <IconReview /> },
   { id: "history", label: "History", icon: <IconHistory /> },
+  { id: "info", label: "Info", icon: <IconInfo /> },
 ];
 
 export default function Sidebar(p: Props) {
@@ -74,6 +76,7 @@ export default function Sidebar(p: Props) {
         {p.tab === "search" && <SearchPanel pid={p.pid} onJump={p.onJump} />}
         {p.tab === "refs" && <ReferencesPanel pid={p.pid} canEdit={p.canEdit} onImported={p.onFilesChanged} onJump={p.onJump} />}
         {p.tab === "check" && <CheckPanel pid={p.pid} onJump={p.onJump} />}
+        {p.tab === "info" && <InfoPanel pid={p.pid} refreshKey={p.outlineKey} />}
         {p.tab === "history" && <HistoryPanel pid={p.pid} canEdit={p.canEdit} />}
       </div>
     </div>

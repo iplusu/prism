@@ -142,3 +142,13 @@ def test_upload_refuses_to_replace_only_when_asked_to(alice):
     assert olds == {before, "NEW B"}
     assert up(b"NEW C").status_code == 200 and len([c for c in alice.get(f"/api/projects/{pid}/versions").json()
                                                     if c.get("message", "").startswith("Before upload replaced")]) == 2  # same content: nothing to keep
+
+
+def test_project_stats_shape(client_factory=None):
+    from app.agent.words import project_stats
+    src = b"\\documentclass{article}\\begin{document}\\section{Intro}Hello brave world $x$ and \\[y\\]\\end{document}"
+    r = project_stats({"main.tex": src}, "main.tex")
+    if r is None:  # texcount not installed
+        return
+    assert r["header_count"] == 1 and r["math_inline"] == 1 and r["math_display"] == 1
+    assert r["total"] == r["text"] + r["headers"] + r["outside"] + 2

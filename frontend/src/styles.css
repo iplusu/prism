@@ -2346,3 +2346,9 @@ td.row-actions {
 .push-toast.bad { border-left: 4px solid var(--danger, #b00020); }
 .push-list { margin-bottom: 8px; }
 .push-list > summary { cursor: pointer; padding: 4px 0; }
+
+.info-h { margin: 8px 12px; font-size: 15px; }
+.info-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; padding: 0 12px; }
+.info-card { background: var(--surface-2, rgba(128,128,128,.12)); border-radius: 8px; padding: 10px 12px; }
+.info-label { font-size: 12px; opacity: .75; }
+.info-value { font-size: 20px; margin-top: 6px; }
