@@ -200,7 +200,7 @@ def project_outline(pid: str, user: User = Depends(current_user), db: Session = 
 @router.get("/stats")
 def project_stats(pid: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
     """Word and structure counts for the project info panel (texcount); stats is null if texcount is unavailable."""
-    project = get_project_for(db, pid, user)
+    project, _ = get_project_for(db, pid, user)
     from ..agent.words import project_stats as _stats
     return {"main_file": project.main_file, "stats": _stats(_live(pid), project.main_file)}
 

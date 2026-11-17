@@ -152,3 +152,10 @@ def test_project_stats_shape(client_factory=None):
         return
     assert r["header_count"] == 1 and r["math_inline"] == 1 and r["math_display"] == 1
     assert r["total"] == r["text"] + r["headers"] + r["outside"] + 2
+
+
+def test_stats_endpoint(alice):
+    pid = new_sample_project(alice)["id"]
+    r = alice.get(f"/api/projects/{pid}/stats")
+    assert r.status_code == 200, r.text
+    assert r.json()["main_file"] == "main.tex" and "stats" in r.json()
