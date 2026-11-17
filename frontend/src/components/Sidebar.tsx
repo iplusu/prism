@@ -28,35 +28,57 @@ interface Props {
   onDeleted: (path: string) => void;
 }
 
-const TABS: { id: SideTab; label: string; icon: ReactNode }[] = [
-  { id: "files", label: "Files", icon: <IconFile /> },
-  { id: "outline", label: "Outline", icon: <IconList /> },
-  { id: "search", label: "Search", icon: <IconSearch /> },
-  { id: "refs", label: "Refs", icon: <IconBook /> },
-  { id: "check", label: "Check", icon: <IconReview /> },
-  { id: "history", label: "History", icon: <IconHistory /> },
-  { id: "info", label: "Info", icon: <IconInfo /> },
+interface TabDef { id: SideTab; label: string; icon: ReactNode }
+const T: Record<SideTab, TabDef> = {
+  files: { id: "files", label: "Files", icon: <IconFile /> },
+  outline: { id: "outline", label: "Outline", icon: <IconList /> },
+  search: { id: "search", label: "Search", icon: <IconSearch /> },
+  refs: { id: "refs", label: "Refs", icon: <IconBook /> },
+  check: { id: "check", label: "Check", icon: <IconReview /> },
+  history: { id: "history", label: "History", icon: <IconHistory /> },
+  info: { id: "info", label: "Info", icon: <IconInfo /> },
+};
+
+// The top row has one tab per group; a group with several panels switches between them with the small buttons under it.
+const GROUPS: { label: string; icon: ReactNode; tabs: SideTab[] }[] = [
+  { label: "Files", icon: <IconFile />, tabs: ["files", "outline", "search"] },
+  { label: "Refs", icon: <IconBook />, tabs: ["refs"] },
+  { label: "Check", icon: <IconReview />, tabs: ["check"] },
+  { label: "Project", icon: <IconInfo />, tabs: ["info", "history"] },
 ];
 
 export default function Sidebar(p: Props) {
+  const group = GROUPS.find((g) => g.tabs.includes(p.tab));
   return (
     <div className="sidebar">
       <div className="side-tabs" role="tablist" aria-label="Sidebar" aria-orientation="horizontal">
-        {TABS.map((t) => (
-          <button
-            key={t.id}
-            role="tab"
-            aria-selected={p.tab === t.id}
-            className={`side-tab ${p.tab === t.id ? "active" : ""}`}
-            onClick={() => p.onTab(t.id)}
-            aria-label={t.label}
-            title={t.label}
-          >
-            {t.icon}
-            <span className="side-tab-label">{t.label}</span>
-          </button>
-        ))}
+        {GROUPS.map((g) => {
+          const active = g.tabs.includes(p.tab);
+          return (
+            <button
+              key={g.label}
+              role="tab"
+              aria-selected={active}
+              className={`side-tab ${active ? "active" : ""}`}
+              onClick={() => !active && p.onTab(g.tabs[0])}
+              aria-label={g.label}
+              title={g.label}
+            >
+              {g.icon}
+              <span className="side-tab-label">{g.label}</span>
+            </button>
+          );
+        })}
       </div>
+      {group && group.tabs.length > 1 && (
+        <div className="side-subtabs" role="tablist" aria-label={group.label}>
+          {group.tabs.map((id) => (
+            <button key={id} role="tab" aria-selected={p.tab === id} className={`side-subtab ${p.tab === id ? "active" : ""}`} onClick={() => p.onTab(id)}>
+              {T[id].label}
+            </button>
+          ))}
+        </div>
+      )}
       <div className="sidebar-body" role="tabpanel">
         {p.tab === "files" && (
           <FileTree

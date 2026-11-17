@@ -2352,3 +2352,8 @@ td.row-actions {
 .info-card { background: var(--surface-2, rgba(128,128,128,.12)); border-radius: 8px; padding: 10px 12px; }
 .info-label { font-size: 12px; opacity: .75; }
 .info-value { font-size: 20px; margin-top: 6px; }
+
+.side-subtabs { display: flex; gap: 4px; padding: 6px 8px; flex: none; border-bottom: 1px solid var(--border); }
+.side-subtab { border: 0; background: none; color: var(--fg-muted); cursor: pointer; padding: 3px 10px; border-radius: 999px; font-size: 12px; }
+.side-subtab:hover { color: var(--fg); }
+.side-subtab.active { background: var(--bg-muted); color: var(--fg); font-weight: 600; }
